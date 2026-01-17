@@ -1,9 +1,9 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repository targets standalone CLI binaries that install skills from GitHub repos.
+This repository targets standalone CLI binaries that install skills and MCP servers.
 - `cmd/mcp/` and `cmd/skill/` for CLI entrypoints.
-- `internal/` for core logic (git clone, scanning, copying).
+- `internal/mcp/` and `internal/skill/` for core logic.
 - `tests/` for integration tests; `testdata/` for fixtures.
 - `scripts/` for release automation.
 - `docs/` for specs and API notes.

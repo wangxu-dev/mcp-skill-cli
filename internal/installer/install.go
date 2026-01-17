@@ -138,10 +138,10 @@ func cacheSkillDirs(skillDirs []string) ([]string, error) {
 	for _, skillDir := range skillDirs {
 		skillName := filepath.Base(skillDir)
 		dest := filepath.Join(storeRoot, skillName)
-	if isWithinRoot(storeRoot, skillDir) {
-		cached = append(cached, filepath.Clean(skillDir))
-		continue
-	}
+		if isWithinRoot(storeRoot, skillDir) {
+			cached = append(cached, filepath.Clean(skillDir))
+			continue
+		}
 
 		if err := os.RemoveAll(dest); err != nil {
 			return nil, err

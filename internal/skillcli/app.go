@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 
 	"mcp-skill-manager/internal/installer"
+	"mcp-skill-manager/internal/skill"
 )
 
 type App struct {
@@ -99,14 +100,14 @@ func (a *App) runInstall(args []string) int {
 	}
 	source := positionals[0]
 	cwd, _ := os.Getwd()
-	records, err := installer.InstallFromInput(source, normalizedScope, tools, cwd, *forceShort || *forceLong)
+	records, err := skill.Install(source, normalizedScope, cwd, tools, *forceShort || *forceLong)
 	if err != nil {
 		fmt.Fprintf(a.errOut, "install failed: %v\n", err)
 		return 1
 	}
 
 	for _, record := range records {
-		fmt.Fprintf(a.out, "installed %s -> %s (%s)\n", record.SkillName, record.DestPath, record.Tool)
+		fmt.Fprintf(a.out, "installed %s -> %s (%s)\n", record.Name, record.Path, record.Client)
 	}
 	return 0
 }
@@ -182,7 +183,7 @@ func (a *App) runList(args []string) int {
 
 	scopes := resolveListScopes(*globalShort || *globalLong, *localShort || *localLong || *projectLong)
 	cwd, _ := os.Getwd()
-	items, err := installer.ListInstalled(tools, scopes, cwd)
+	items, err := skill.List(scopes, cwd, tools)
 	if err != nil {
 		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
 		return 1
@@ -202,10 +203,10 @@ func (a *App) runList(args []string) int {
 	)
 
 	for _, item := range items {
-		if !matchesSkillFilter(item.SkillName, skillFilter) {
+		if !matchesSkillFilter(item.Name, skillFilter) {
 			continue
 		}
-		if writer == nil || item.Tool != lastTool || item.Scope != lastScope {
+		if writer == nil || item.Client != lastTool || item.Scope != lastScope {
 			if writer != nil {
 				if err := writer.Flush(); err != nil {
 					fmt.Fprintf(a.errOut, "list failed: %v\n", err)
@@ -215,15 +216,15 @@ func (a *App) runList(args []string) int {
 			if printed {
 				fmt.Fprintln(a.out)
 			}
-			fmt.Fprintf(a.out, "%s (%s)\n", item.Tool, item.Scope)
+			fmt.Fprintf(a.out, "%s (%s)\n", item.Client, item.Scope)
 			writer = tabwriter.NewWriter(a.out, 0, 4, 2, ' ', 0)
 			fmt.Fprintln(writer, "SKILL\tPATH")
 			printed = true
-			lastTool = item.Tool
+			lastTool = item.Client
 			lastScope = item.Scope
 		}
 		matched++
-		fmt.Fprintf(writer, "%s\t%s\n", item.SkillName, item.Path)
+		fmt.Fprintf(writer, "%s\t%s\n", item.Name, item.Path)
 	}
 
 	if matched == 0 {
@@ -299,7 +300,7 @@ func (a *App) runUninstall(args []string) int {
 	}
 
 	cwd, _ := os.Getwd()
-	var records []installer.RemoveRecord
+	var records []skill.Installed
 	if allRequested {
 		targets, err := collectRemovalTargets(positionals, tools, normalizedScope, cwd)
 		if err != nil {
@@ -320,10 +321,10 @@ func (a *App) runUninstall(args []string) int {
 			fmt.Fprintln(a.errOut, "uninstall requires a skill name (or use -a)")
 			return 2
 		}
-		records, err = installer.UninstallAll(normalizedScope, tools, cwd)
+		records, err = skill.UninstallAll(normalizedScope, cwd, tools)
 	} else {
 		name := positionals[0]
-		records, err = installer.UninstallSkill(name, normalizedScope, tools, cwd, *forceShort || *forceLong)
+		records, err = skill.Uninstall(name, normalizedScope, cwd, tools, *forceShort || *forceLong)
 	}
 	if err != nil {
 		fmt.Fprintf(a.errOut, "uninstall failed: %v\n", err)
@@ -331,7 +332,7 @@ func (a *App) runUninstall(args []string) int {
 	}
 
 	for _, record := range records {
-		fmt.Fprintf(a.out, "removed %s from %s (%s)\n", record.SkillName, record.Path, record.Tool)
+		fmt.Fprintf(a.out, "removed %s from %s (%s)\n", record.Name, record.Path, record.Client)
 	}
 	return 0
 }
@@ -361,12 +362,7 @@ func (a *App) runClean(args []string) int {
 		return 0
 	}
 
-	skillRoot, err := installer.LocalSkillStore()
-	if err != nil {
-		fmt.Fprintf(a.errOut, "clean failed: %v\n", err)
-		return 1
-	}
-	mcpRoot, err := installer.LocalMcpStore()
+	skillRoot, mcpRoot, err := skill.LocalStorePaths()
 	if err != nil {
 		fmt.Fprintf(a.errOut, "clean failed: %v\n", err)
 		return 1
@@ -389,7 +385,7 @@ func (a *App) runClean(args []string) int {
 		return 0
 	}
 
-	if err := installer.CleanLocalStore(); err != nil {
+	if err := skill.CleanLocalStore(); err != nil {
 		fmt.Fprintf(a.errOut, "clean failed: %v\n", err)
 		return 1
 	}
@@ -446,8 +442,8 @@ func resolveListScopes(global bool, local bool) []string {
 	return []string{installer.ScopeProject}
 }
 
-func collectRemovalTargets(positionals []string, tools []installer.Tool, scope, cwd string) ([]installer.RemoveRecord, error) {
-	items, err := installer.ListInstalled(tools, []string{scope}, cwd)
+func collectRemovalTargets(positionals []string, tools []installer.Tool, scope, cwd string) ([]skill.Installed, error) {
+	items, err := skill.List([]string{scope}, cwd, tools)
 	if err != nil {
 		return nil, err
 	}
@@ -457,25 +453,20 @@ func collectRemovalTargets(positionals []string, tools []installer.Tool, scope, 
 		nameFilter = positionals[0]
 	}
 
-	var targets []installer.RemoveRecord
+	var targets []skill.Installed
 	for _, item := range items {
-		if nameFilter != "" && item.SkillName != nameFilter {
+		if nameFilter != "" && item.Name != nameFilter {
 			continue
 		}
-		targets = append(targets, installer.RemoveRecord{
-			SkillName: item.SkillName,
-			Tool:      item.Tool,
-			Scope:     item.Scope,
-			Path:      item.Path,
-		})
+		targets = append(targets, item)
 	}
 	return targets, nil
 }
 
-func confirmRemoval(out io.Writer, targets []installer.RemoveRecord) bool {
+func confirmRemoval(out io.Writer, targets []skill.Installed) bool {
 	fmt.Fprintf(out, "About to remove %d skill(s):\n", len(targets))
 	for _, item := range targets {
-		fmt.Fprintf(out, "- %s (%s/%s)\n", item.SkillName, item.Tool, item.Scope)
+		fmt.Fprintf(out, "- %s (%s/%s)\n", item.Name, item.Client, item.Scope)
 	}
 	return confirmPrompt(out, "Type 'yes' to continue: ")
 }
