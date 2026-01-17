@@ -74,7 +74,7 @@ func (a *App) runInstall(args []string) int {
 	}
 
 	if len(positionals) == 0 {
-		fmt.Fprintln(a.errOut, "install requires a GitHub repo (owner/repo or URL)")
+		fmt.Fprintln(a.errOut, "install requires a repo, path, or local skill name")
 		return 2
 	}
 
@@ -94,9 +94,9 @@ func (a *App) runInstall(args []string) int {
 		fmt.Fprintf(a.errOut, "invalid scope: %v\n", err)
 		return 2
 	}
-	repo := positionals[0]
+	source := positionals[0]
 	cwd, _ := os.Getwd()
-	records, err := installer.InstallFromRepo(repo, normalizedScope, tools, cwd, *forceShort || *forceLong)
+	records, err := installer.InstallFromInput(source, normalizedScope, tools, cwd, *forceShort || *forceLong)
 	if err != nil {
 		fmt.Fprintf(a.errOut, "install failed: %v\n", err)
 		return 1
@@ -121,14 +121,16 @@ Use "%s <command> -h" for command help.
 }
 
 func (a *App) printInstallHelp() {
-	fmt.Fprintf(a.out, `Usage: %s install <repo> [--global|-g] [--local|-l] [--force|-f] [--client|-c <list>] [--all|-a]
+	fmt.Fprintf(a.out, `Usage: %s install <repo|path|name> [--global|-g] [--local|-l] [--force|-f] [--client|-c <list>] [--all|-a]
 
 Examples:
   %s install openai/skills
+  %s install D:\downloads\agent-skills -c opencode
+  %s install react-best-practices -c opencode
   %s i https://github.com/openai/skills.git -c codex,claude
   %s install openai/skills -g -c opencode
   %s install openai/skills -g -a
-`, a.binaryName, a.binaryName, a.binaryName, a.binaryName, a.binaryName)
+`, a.binaryName, a.binaryName, a.binaryName, a.binaryName, a.binaryName, a.binaryName, a.binaryName)
 }
 
 func (a *App) runList(args []string) int {

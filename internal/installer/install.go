@@ -15,6 +15,22 @@ type InstallRecord struct {
 	DestPath  string
 }
 
+func InstallFromInput(input string, scope string, tools []Tool, cwd string, force bool) ([]InstallRecord, error) {
+	if strings.TrimSpace(input) == "" {
+		return nil, fmt.Errorf("source is required")
+	}
+
+	if isExistingPath(input) {
+		return InstallFromPath(input, scope, tools, cwd, force)
+	}
+
+	if isRepoInput(input) {
+		return InstallFromRepo(input, scope, tools, cwd, force)
+	}
+
+	return InstallFromLocalStore(input, scope, tools, cwd, force)
+}
+
 func InstallFromRepo(repo string, scope string, tools []Tool, cwd string, force bool) ([]InstallRecord, error) {
 	tempDir, err := os.MkdirTemp("", "mcp-skill-*")
 	if err != nil {
@@ -31,14 +47,42 @@ func InstallFromRepo(repo string, scope string, tools []Tool, cwd string, force 
 		return nil, err
 	}
 
-	skillDirs, err := findSkillDirs(tempDir)
+	return InstallFromPath(tempDir, scope, tools, cwd, force)
+}
+
+func InstallFromPath(path string, scope string, tools []Tool, cwd string, force bool) ([]InstallRecord, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("path is not a directory: %s", path)
+	}
+
+	skillDirs, err := findSkillDirs(path)
 	if err != nil {
 		return nil, err
 	}
 	if len(skillDirs) == 0 {
-		return nil, fmt.Errorf("no SKILL.md found in repository")
+		return nil, fmt.Errorf("no SKILL.md found in %s", path)
 	}
 
+	return installSkillDirs(skillDirs, scope, tools, cwd, force)
+}
+
+func InstallFromLocalStore(name string, scope string, tools []Tool, cwd string, force bool) ([]InstallRecord, error) {
+	storeRoot, err := LocalSkillStore()
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(storeRoot, name)
+	if !isExistingPath(path) {
+		return nil, fmt.Errorf("skill not found in local store: %s", name)
+	}
+	return InstallFromPath(path, scope, tools, cwd, force)
+}
+
+func installSkillDirs(skillDirs []string, scope string, tools []Tool, cwd string, force bool) ([]InstallRecord, error) {
 	var records []InstallRecord
 	for _, skillDir := range skillDirs {
 		skillName := filepath.Base(skillDir)
@@ -73,7 +117,6 @@ func InstallFromRepo(repo string, scope string, tools []Tool, cwd string, force 
 			})
 		}
 	}
-
 	return records, nil
 }
 
@@ -89,6 +132,16 @@ func normalizeRepoURL(repo string) (string, error) {
 		return "https://github.com/" + repo + ".git", nil
 	}
 	return "", fmt.Errorf("unsupported repository format: %s", repo)
+}
+
+func isRepoInput(input string) bool {
+	_, err := normalizeRepoURL(input)
+	return err == nil
+}
+
+func isExistingPath(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func gitClone(repoURL, dest string) error {

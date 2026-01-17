@@ -7,6 +7,7 @@ This repository targets standalone CLI binaries that install skills from GitHub 
 - `tests/` for integration tests; `testdata/` for fixtures.
 - `scripts/` for release automation.
 - `docs/` for specs and API notes.
+- Local store root: `~/.mcp-skill/` with `skill/` and `mcp/`.
 
 ## Build, Test, and Development Commands
 Keep these commands working and documented:
