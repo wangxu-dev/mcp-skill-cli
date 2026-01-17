@@ -318,11 +318,15 @@ func (a *App) runUninstall(args []string) int {
 	cwd, _ := os.Getwd()
 	var records []mcp.Installed
 	if len(positionals) == 0 {
-		fmt.Fprintln(a.errOut, "uninstall requires a server name (or use list to find)")
-		return 2
+		if !allRequested {
+			fmt.Fprintln(a.errOut, "uninstall requires a server name (or use -a)")
+			return 2
+		}
+		records, err = mcp.UninstallAll(normalizedScope, cwd, clients)
+	} else {
+		name := positionals[0]
+		records, err = mcp.Uninstall(name, normalizedScope, cwd, clients, *forceShort || *forceLong)
 	}
-	name := positionals[0]
-	records, err = mcp.Uninstall(name, normalizedScope, cwd, clients, *forceShort || *forceLong)
 	if err != nil {
 		fmt.Fprintf(a.errOut, "uninstall failed: %v\n", err)
 		return 1
@@ -415,15 +419,16 @@ func (a *App) printListHelp() {
 Examples:
   %s list
   %s list github -g -c claude
-`, a.binaryName, a.binaryName, a.binaryName)
+`, a.binaryName, a.binaryName, a.binaryName, a.binaryName)
 }
 
 func (a *App) printUninstallHelp() {
-	fmt.Fprintf(a.out, `Usage: %s uninstall <name> [--global|-g] [--local|-l] [--force|-f] [--client|-c <list>] [--all|-a]
+	fmt.Fprintf(a.out, `Usage: %s uninstall [name] [--global|-g] [--local|-l] [--force|-f] [--client|-c <list>] [--all|-a]
 
 Examples:
   %s uninstall github -l -c claude
   %s rm github -g -a
+  %s rm -g -a
 `, a.binaryName, a.binaryName, a.binaryName)
 }
 

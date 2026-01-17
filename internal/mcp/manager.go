@@ -49,6 +49,36 @@ func Uninstall(name, scope, cwd string, clients []installer.Tool, force bool) ([
 	return results, nil
 }
 
+func UninstallAll(scope, cwd string, clients []installer.Tool) ([]Installed, error) {
+	items, err := List([]string{scope}, cwd, clients)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := map[string]bool{}
+	var results []Installed
+	for _, item := range items {
+		key := string(item.Client) + ":" + item.Name
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
+		path, err := uninstallForClient(item.Client, item.Name, scope, cwd, true)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, Installed{
+			Name:      item.Name,
+			Client:    item.Client,
+			Scope:     scope,
+			Path:      path,
+			Transport: item.Transport,
+		})
+	}
+	return results, nil
+}
+
 func List(scopes []string, cwd string, clients []installer.Tool) ([]Installed, error) {
 	var results []Installed
 	for _, scope := range scopes {

@@ -1,4 +1,4 @@
-package cli
+package skillcli
 
 import (
 	"bufio"
@@ -316,6 +316,10 @@ func (a *App) runUninstall(args []string) int {
 		}
 	}
 	if len(positionals) == 0 {
+		if !allRequested {
+			fmt.Fprintln(a.errOut, "uninstall requires a skill name (or use -a)")
+			return 2
+		}
 		records, err = installer.UninstallAll(normalizedScope, tools, cwd)
 	} else {
 		name := positionals[0]

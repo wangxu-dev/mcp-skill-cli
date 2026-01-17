@@ -3,10 +3,10 @@ package main
 import (
 	"os"
 
-	"mcp-skill-manager/internal/cli"
+	"mcp-skill-manager/internal/skillcli"
 )
 
 func main() {
-	app := cli.New("skill", os.Stdout, os.Stderr)
+	app := skillcli.New("skill", os.Stdout, os.Stderr)
 	os.Exit(app.Run(os.Args[1:]))
 }
