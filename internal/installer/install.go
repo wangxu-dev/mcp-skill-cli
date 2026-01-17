@@ -87,6 +87,17 @@ func InstallFromLocalStore(name string, scope string, tools []Tool, cwd string, 
 	return installSkillDirs([]string{path}, scope, tools, cwd, force)
 }
 
+func CacheSkillDir(path string) (string, error) {
+	cached, err := cacheSkillDirs([]string{path})
+	if err != nil {
+		return "", err
+	}
+	if len(cached) == 0 {
+		return "", fmt.Errorf("skill cache failed")
+	}
+	return cached[0], nil
+}
+
 func installSkillDirs(skillDirs []string, scope string, tools []Tool, cwd string, force bool) ([]InstallRecord, error) {
 	var records []InstallRecord
 	for _, skillDir := range skillDirs {

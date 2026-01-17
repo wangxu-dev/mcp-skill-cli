@@ -1,37 +1,31 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repository targets standalone CLI binaries that install skills and MCP servers.
-- `cmd/mcp/` and `cmd/skill/` for CLI entrypoints.
-- `internal/mcp/` and `internal/skill/` for core logic.
-- `tests/` for integration tests; `testdata/` for fixtures.
-- `scripts/` for release automation.
-- `docs/` for specs and API notes.
-- Local store root: `~/.mcp-skill/` with `skill/` and `mcp/`.
+This repository builds two Go CLIs: `mcp` (MCP servers) and `skill` (skills). Keep entrypoints in `cmd/` thin and push logic into `internal/`.
+- `cmd/mcp/` and `cmd/skill/` are the binaries’ entrypoints.
+- `internal/mcp/` handles per-client config read/write (Claude, Codex, Gemini, OpenCode).
+- `internal/installer/` handles skill discovery, copying, and local cache.
+- `internal/registryindex/` syncs cloud index files and local metadata.
+- `internal/mcpcli/` and `internal/skillcli/` wire up flags and output.
+- Local cache root: `~/.mcp-skill/` with `skill/`, `mcp/`, and `index.*.json`.
 
 ## Build, Test, and Development Commands
-Keep these commands working and documented:
-- `go build ./cmd/mcp` - build the `mcp` binary.
-- `go build ./cmd/skill` - build the `skill` binary.
-- `go test ./...` - run the test suite.
+- `go build ./cmd/skill` builds the skill CLI.
+- `go build ./cmd/mcp` builds the MCP CLI.
+- `go test ./...` runs tests (currently none; still keep it green).
 
 ## Coding Style & Naming Conventions
-- Go formatting: `gofmt` on all `.go` files.
-- Package names: short, lowercase, no underscores.
-- CLI flags: `--global|-g`, `--local|-l`, `--force|-f`, `--client|-c`, `--all|-a` with `claude,codex,gemini,opencode`.
-- Keep CLI parsing thin in `cmd/` and move logic into `internal/`.
+- Run `gofmt` on all Go files.
+- Package names are lowercase and short (`mcpcli`, `registryindex`).
+- Keep flags consistent (`--global|-g`, `--local|-l`, `--force|-f`, `--client|-c`, `--all|-a`).
+- Use ASCII-only strings unless the file already contains Unicode.
 
 ## Testing Guidelines
-- Use Go’s `testing` package.
-- Name tests `TestXxx` and keep fixtures in `testdata/`.
-- Cover command parsing, git clone behavior, and install flows.
+There are no automated tests yet. If adding tests, use the standard `testing` package, name files `*_test.go`, and keep fixtures close to the package (e.g., `internal/mcp/testdata/`).
 
 ## Commit & Pull Request Guidelines
-Use Conventional Commits:
-- `feat: add registry search`
-- `fix: handle missing config`
-PRs should include a clear description, test steps, and screenshots for UI changes.
+Git history uses emoji + Conventional Commits (examples: `✨ feat: ...`, `♻️ refactor: ...`, `🔧 chore: ...`). Keep commit subjects short and scoped to a change. PRs should include a brief description, CLI examples used for verification, and note any config files touched.
 
 ## Security & Configuration Tips
-- Do not add flags for arbitrary sources; the CLI installs from GitHub repos only.
-- Do not commit tokens or private endpoints.
+- Avoid adding flags for arbitrary remote sources; the registry index is the default source of truth.
+- Do not commit tokens, private URLs, or user-specific config files (e.g., `~/.codex/config.toml`).

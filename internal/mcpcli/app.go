@@ -12,6 +12,7 @@ import (
 
 	"mcp-skill-manager/internal/installer"
 	"mcp-skill-manager/internal/mcp"
+	"mcp-skill-manager/internal/registryindex"
 )
 
 type App struct {
@@ -115,7 +116,7 @@ func (a *App) runInstall(args []string) int {
 			return 2
 		}
 		source := positionals[0]
-		def, err = mcp.LoadDefinitionFromInput(source)
+		def, err = resolveDefinition(source)
 		if err != nil {
 			fmt.Fprintf(a.errOut, "install failed: %v\n", err)
 			return 1
@@ -393,7 +394,7 @@ func (a *App) printHelp() {
 	fmt.Fprintf(a.out, `Usage: %s <command> [options]
 
 Commands:
-  install|i <source>   Install MCP servers from local store or file
+  install|i <source>   Install MCP servers from registry, local store, or file
   list                 List installed MCP servers
   uninstall|remove|rm  Remove installed MCP servers
   clean                Clear local store (~/.mcp-skill/skill and ~/.mcp-skill/mcp)
@@ -644,4 +645,47 @@ func countEntries(path string) (int, error) {
 		return 0, err
 	}
 	return len(entries), nil
+}
+
+func resolveDefinition(source string) (mcp.Definition, error) {
+	if fileExists(source) {
+		return mcp.LoadDefinitionFromFile(source)
+	}
+
+	if err := registryindex.EnsureIndexes(); err != nil {
+		def, localErr := mcp.LoadLocalDefinition(source)
+		if localErr != nil {
+			return mcp.Definition{}, err
+		}
+		return def, nil
+	}
+
+	entry, ok, err := registryindex.FindMCP(source)
+	if err != nil {
+		return mcp.Definition{}, err
+	}
+	if ok {
+		if err := registryindex.SyncMCP(entry); err != nil {
+			def, localErr := mcp.LoadLocalDefinition(entry.Name)
+			if localErr != nil {
+				return mcp.Definition{}, err
+			}
+			return def, nil
+		}
+		return mcp.LoadLocalDefinition(entry.Name)
+	}
+
+	def, err := mcp.LoadLocalDefinition(source)
+	if err != nil {
+		return mcp.Definition{}, fmt.Errorf("server not found in registry or local store: %s", source)
+	}
+	return def, nil
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsRegular()
 }
