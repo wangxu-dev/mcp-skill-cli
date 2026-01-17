@@ -28,13 +28,30 @@ async function main() {
     if (fs.existsSync(dest)) {
       continue;
     }
-    const assetName = `${name}_${version}_${platform}_${arch}${ext}`;
-    const url = `https://github.com/${repo}/releases/download/v${version}/${assetName}`;
-    await download(url, dest);
+    await downloadBinary(name, dest);
     if (platform !== "windows") {
       fs.chmodSync(dest, 0o755);
     }
   }
+}
+
+async function downloadBinary(name, dest) {
+  const base = `${name}_${version}_${platform}_${arch}`;
+  const candidates = platform === "windows"
+    ? [`${base}.exe`, `${base}.exe.exe`]
+    : [base];
+
+  let lastError = null;
+  for (const assetName of candidates) {
+    const url = `https://github.com/${repo}/releases/download/v${version}/${assetName}`;
+    try {
+      await download(url, dest);
+      return;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error(`download failed for ${name}`);
 }
 
 function download(url, dest) {

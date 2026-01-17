@@ -27,12 +27,12 @@ archives:
     builds:
       - mcp
     format: binary
-    name_template: "mcp_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if eq .Os \"windows\" }}.exe{{ end }}"
+    name_template: "mcp_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
   - id: skill
     builds:
       - skill
     format: binary
-    name_template: "skill_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if eq .Os \"windows\" }}.exe{{ end }}"
+    name_template: "skill_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"

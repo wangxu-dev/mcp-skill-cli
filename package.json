@@ -16,6 +16,7 @@
     "scripts/",
     "LICENSE",
     "NOTICE",
+    "CHANGELOG.md",
     "README.md"
   ],
   "engines": {
