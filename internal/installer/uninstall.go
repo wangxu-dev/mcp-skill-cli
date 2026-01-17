@@ -45,3 +45,25 @@ func UninstallSkill(name string, scope string, tools []Tool, cwd string, force b
 
 	return records, nil
 }
+
+func UninstallAll(scope string, tools []Tool, cwd string) ([]RemoveRecord, error) {
+	items, err := ListInstalled(tools, []string{scope}, cwd)
+	if err != nil {
+		return nil, err
+	}
+
+	var records []RemoveRecord
+	for _, item := range items {
+		if err := os.RemoveAll(item.Path); err != nil {
+			return nil, err
+		}
+		records = append(records, RemoveRecord{
+			SkillName: item.SkillName,
+			Tool:      item.Tool,
+			Scope:     item.Scope,
+			Path:      item.Path,
+		})
+	}
+
+	return records, nil
+}

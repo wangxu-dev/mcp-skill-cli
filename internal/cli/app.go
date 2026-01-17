@@ -276,11 +276,6 @@ func (a *App) runUninstall(args []string) int {
 		return 0
 	}
 
-	if len(positionals) == 0 {
-		fmt.Fprintln(a.errOut, "uninstall requires a skill name")
-		return 2
-	}
-
 	clientValue, err := resolveClientValue(*clientFlag, *clientShort, *toolFlag, *allShort || *allLong)
 	if err != nil {
 		fmt.Fprintf(a.errOut, "invalid client selection: %v\n", err)
@@ -298,9 +293,14 @@ func (a *App) runUninstall(args []string) int {
 		return 2
 	}
 
-	name := positionals[0]
 	cwd, _ := os.Getwd()
-	records, err := installer.UninstallSkill(name, normalizedScope, tools, cwd, *forceShort || *forceLong)
+	var records []installer.RemoveRecord
+	if len(positionals) == 0 {
+		records, err = installer.UninstallAll(normalizedScope, tools, cwd)
+	} else {
+		name := positionals[0]
+		records, err = installer.UninstallSkill(name, normalizedScope, tools, cwd, *forceShort || *forceLong)
+	}
 	if err != nil {
 		fmt.Fprintf(a.errOut, "uninstall failed: %v\n", err)
 		return 1
@@ -313,12 +313,13 @@ func (a *App) runUninstall(args []string) int {
 }
 
 func (a *App) printUninstallHelp() {
-	fmt.Fprintf(a.out, `Usage: %s uninstall <name> [--global|-g] [--local|-l] [--force|-f] [--client|-c <list>] [--all|-a]
+	fmt.Fprintf(a.out, `Usage: %s uninstall [name] [--global|-g] [--local|-l] [--force|-f] [--client|-c <list>] [--all|-a]
 
 Examples:
   %s uninstall my-skill -l -c opencode
   %s rm my-skill -g -a
-`, a.binaryName, a.binaryName, a.binaryName)
+  %s uninstall -g -a
+`, a.binaryName, a.binaryName, a.binaryName, a.binaryName)
 }
 
 func isHelp(value string) bool {
