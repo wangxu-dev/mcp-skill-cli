@@ -1,0 +1,37 @@
+{
+  "name": "mcp-skill-cli",
+  "version": "0.0.2",
+  "description": "MCP and skill CLI installers",
+  "author": "wangxu <wx@aurise.dev>",
+  "license": "Apache-2.0",
+  "bin": {
+    "mcp": "bin/mcp",
+    "skill": "bin/skill"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "skill",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wangxu-dev/mcp-skill-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wangxu-dev/mcp-skill-cli/issues"
+  },
+  "homepage": "https://github.com/wangxu-dev/mcp-skill-cli"
+}

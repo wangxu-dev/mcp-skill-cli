@@ -7,6 +7,7 @@ This repository builds two Go CLIs: `mcp` (MCP servers) and `skill` (skills). Ke
 - `internal/installer/` handles skill discovery, copying, and local cache.
 - `internal/registryindex/` syncs cloud index files and local metadata.
 - `internal/mcpcli/` and `internal/skillcli/` wire up flags and output.
+- `bin/` and `scripts/` at repo root hold the npm wrapper that downloads release binaries.
 - Local cache root: `~/.mcp-skill/` with `skill/`, `mcp/`, and `index.*.json`.
 
 ## Build, Test, and Development Commands

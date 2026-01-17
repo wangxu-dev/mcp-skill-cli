@@ -1,3 +1,5 @@
 .opencode
 *.exe
 chat
+bin/native/
+node_modules/

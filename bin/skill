@@ -1,0 +1,16 @@
+#!/usr/bin/env node
+"use strict";
+
+const { spawn } = require("child_process");
+const { resolveBinary } = require("../scripts/resolve");
+
+const binPath = resolveBinary("skill");
+const child = spawn(binPath, process.argv.slice(2), { stdio: "inherit" });
+
+child.on("error", (err) => {
+  console.error(err.message || String(err));
+  process.exit(1);
+});
+child.on("exit", (code) => {
+  process.exit(code ?? 1);
+});
