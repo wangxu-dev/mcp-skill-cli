@@ -20,7 +20,7 @@ var allTools = []Tool{ToolClaude, ToolCodex, ToolGemini, ToolOpenCode}
 
 func ParseTools(value string) ([]Tool, error) {
 	if strings.TrimSpace(value) == "" {
-		return allTools, nil
+		return nil, fmt.Errorf("no tools specified")
 	}
 
 	raw := strings.Split(value, ",")

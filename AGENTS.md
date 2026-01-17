@@ -17,7 +17,7 @@ Keep these commands working and documented:
 ## Coding Style & Naming Conventions
 - Go formatting: `gofmt` on all `.go` files.
 - Package names: short, lowercase, no underscores.
-- CLI flags: `--global|-g`, `--local|-l`, `--force|-f`, `--client|-c` with `claude,codex,gemini,opencode`.
+- CLI flags: `--global|-g`, `--local|-l`, `--force|-f`, `--client|-c`, `--all|-a` with `claude,codex,gemini,opencode`.
 - Keep CLI parsing thin in `cmd/` and move logic into `internal/`.
 
 ## Testing Guidelines
