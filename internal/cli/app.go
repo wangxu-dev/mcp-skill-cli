@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
@@ -38,6 +39,8 @@ func (a *App) Run(args []string) int {
 		return a.runList(args[1:])
 	case "uninstall", "remove", "rm":
 		return a.runUninstall(args[1:])
+	case "clean":
+		return a.runClean(args[1:])
 	default:
 		fmt.Fprintf(a.errOut, "unknown command: %s\n", args[0])
 		a.printHelp()
@@ -112,9 +115,10 @@ func (a *App) printHelp() {
 	fmt.Fprintf(a.out, `Usage: %s <command> [options]
 
 Commands:
-  install|i <repo>   Install skills from a GitHub repository
+  install|i <source>   Install skills from repo, local path, or local store
   list               List installed skills
   uninstall|remove|rm <name>   Remove an installed skill
+  clean              Clear local store (~/.mcp-skill/skill and ~/.mcp-skill/mcp)
 
 Use "%s <command> -h" for command help.
 `, a.binaryName, a.binaryName)
@@ -276,7 +280,8 @@ func (a *App) runUninstall(args []string) int {
 		return 0
 	}
 
-	clientValue, err := resolveClientValue(*clientFlag, *clientShort, *toolFlag, *allShort || *allLong)
+	allRequested := *allShort || *allLong
+	clientValue, err := resolveClientValue(*clientFlag, *clientShort, *toolFlag, allRequested)
 	if err != nil {
 		fmt.Fprintf(a.errOut, "invalid client selection: %v\n", err)
 		return 2
@@ -295,6 +300,21 @@ func (a *App) runUninstall(args []string) int {
 
 	cwd, _ := os.Getwd()
 	var records []installer.RemoveRecord
+	if allRequested {
+		targets, err := collectRemovalTargets(positionals, tools, normalizedScope, cwd)
+		if err != nil {
+			fmt.Fprintf(a.errOut, "uninstall failed: %v\n", err)
+			return 1
+		}
+		if len(targets) == 0 {
+			fmt.Fprintln(a.out, "no matching skills found")
+			return 0
+		}
+		if !confirmRemoval(a.out, targets) {
+			fmt.Fprintln(a.out, "canceled")
+			return 0
+		}
+	}
 	if len(positionals) == 0 {
 		records, err = installer.UninstallAll(normalizedScope, tools, cwd)
 	} else {
@@ -320,6 +340,66 @@ Examples:
   %s rm my-skill -g -a
   %s uninstall -g -a
 `, a.binaryName, a.binaryName, a.binaryName, a.binaryName)
+}
+
+func (a *App) runClean(args []string) int {
+	fs := flag.NewFlagSet("clean", flag.ContinueOnError)
+	fs.SetOutput(a.errOut)
+	helpShort := fs.Bool("h", false, "show help")
+	helpLong := fs.Bool("help", false, "show help")
+
+	flags, _ := splitArgs(args)
+	if err := fs.Parse(flags); err != nil {
+		return 2
+	}
+	if *helpShort || *helpLong {
+		a.printCleanHelp()
+		return 0
+	}
+
+	skillRoot, err := installer.LocalSkillStore()
+	if err != nil {
+		fmt.Fprintf(a.errOut, "clean failed: %v\n", err)
+		return 1
+	}
+	mcpRoot, err := installer.LocalMcpStore()
+	if err != nil {
+		fmt.Fprintf(a.errOut, "clean failed: %v\n", err)
+		return 1
+	}
+
+	skillCount, err := countEntries(skillRoot)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "clean failed: %v\n", err)
+		return 1
+	}
+	mcpCount, err := countEntries(mcpRoot)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "clean failed: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintf(a.out, "Local store will be cleared:\n- %s (%d item(s))\n- %s (%d item(s))\n", skillRoot, skillCount, mcpRoot, mcpCount)
+	if !confirmPrompt(a.out, "Type 'yes' to continue: ") {
+		fmt.Fprintln(a.out, "canceled")
+		return 0
+	}
+
+	if err := installer.CleanLocalStore(); err != nil {
+		fmt.Fprintf(a.errOut, "clean failed: %v\n", err)
+		return 1
+	}
+	fmt.Fprintln(a.out, "clean complete")
+	return 0
+}
+
+func (a *App) printCleanHelp() {
+	fmt.Fprintf(a.out, `Usage: %s clean
+
+Clears:
+  ~/.mcp-skill/skill
+  ~/.mcp-skill/mcp
+`, a.binaryName)
 }
 
 func isHelp(value string) bool {
@@ -360,6 +440,62 @@ func resolveListScopes(global bool, local bool) []string {
 		return []string{installer.ScopeProject}
 	}
 	return []string{installer.ScopeProject}
+}
+
+func collectRemovalTargets(positionals []string, tools []installer.Tool, scope, cwd string) ([]installer.RemoveRecord, error) {
+	items, err := installer.ListInstalled(tools, []string{scope}, cwd)
+	if err != nil {
+		return nil, err
+	}
+
+	var nameFilter string
+	if len(positionals) > 0 {
+		nameFilter = positionals[0]
+	}
+
+	var targets []installer.RemoveRecord
+	for _, item := range items {
+		if nameFilter != "" && item.SkillName != nameFilter {
+			continue
+		}
+		targets = append(targets, installer.RemoveRecord{
+			SkillName: item.SkillName,
+			Tool:      item.Tool,
+			Scope:     item.Scope,
+			Path:      item.Path,
+		})
+	}
+	return targets, nil
+}
+
+func confirmRemoval(out io.Writer, targets []installer.RemoveRecord) bool {
+	fmt.Fprintf(out, "About to remove %d skill(s):\n", len(targets))
+	for _, item := range targets {
+		fmt.Fprintf(out, "- %s (%s/%s)\n", item.SkillName, item.Tool, item.Scope)
+	}
+	return confirmPrompt(out, "Type 'yes' to continue: ")
+}
+
+func confirmPrompt(out io.Writer, prompt string) bool {
+	fmt.Fprint(out, prompt)
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		return false
+	}
+	line = strings.TrimSpace(strings.ToLower(line))
+	return line == "yes"
+}
+
+func countEntries(path string) (int, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return len(entries), nil
 }
 
 func resolveClientValue(clientFlag, clientShort, toolFlag string, all bool) (string, error) {

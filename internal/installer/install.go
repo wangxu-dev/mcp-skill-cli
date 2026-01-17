@@ -67,7 +67,12 @@ func InstallFromPath(path string, scope string, tools []Tool, cwd string, force 
 		return nil, fmt.Errorf("no SKILL.md found in %s", path)
 	}
 
-	return installSkillDirs(skillDirs, scope, tools, cwd, force)
+	cachedDirs, err := cacheSkillDirs(skillDirs)
+	if err != nil {
+		return nil, err
+	}
+
+	return installSkillDirs(cachedDirs, scope, tools, cwd, force)
 }
 
 func InstallFromLocalStore(name string, scope string, tools []Tool, cwd string, force bool) ([]InstallRecord, error) {
@@ -79,7 +84,7 @@ func InstallFromLocalStore(name string, scope string, tools []Tool, cwd string, 
 	if !isExistingPath(path) {
 		return nil, fmt.Errorf("skill not found in local store: %s", name)
 	}
-	return InstallFromPath(path, scope, tools, cwd, force)
+	return installSkillDirs([]string{path}, scope, tools, cwd, force)
 }
 
 func installSkillDirs(skillDirs []string, scope string, tools []Tool, cwd string, force bool) ([]InstallRecord, error) {
@@ -120,6 +125,35 @@ func installSkillDirs(skillDirs []string, scope string, tools []Tool, cwd string
 	return records, nil
 }
 
+func cacheSkillDirs(skillDirs []string) ([]string, error) {
+	storeRoot, err := LocalSkillStore()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(storeRoot, 0o755); err != nil {
+		return nil, err
+	}
+
+	var cached []string
+	for _, skillDir := range skillDirs {
+		skillName := filepath.Base(skillDir)
+		dest := filepath.Join(storeRoot, skillName)
+	if isWithinRoot(storeRoot, skillDir) {
+		cached = append(cached, filepath.Clean(skillDir))
+		continue
+	}
+
+		if err := os.RemoveAll(dest); err != nil {
+			return nil, err
+		}
+		if err := copyDir(skillDir, dest); err != nil {
+			return nil, err
+		}
+		cached = append(cached, dest)
+	}
+	return cached, nil
+}
+
 func normalizeRepoURL(repo string) (string, error) {
 	repo = strings.TrimSpace(repo)
 	if repo == "" {
@@ -142,6 +176,19 @@ func isRepoInput(input string) bool {
 func isExistingPath(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func isWithinRoot(root, path string) bool {
+	root = filepath.Clean(root)
+	path = filepath.Clean(path)
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && rel != ".."
 }
 
 func gitClone(repoURL, dest string) error {
