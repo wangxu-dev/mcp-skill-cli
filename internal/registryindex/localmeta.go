@@ -34,6 +34,10 @@ func LoadLocalRecord(kind, name string) (LocalRecord, bool, error) {
 	return record, true, nil
 }
 
+func LocalRecordFor(kind, name string) (LocalRecord, bool, error) {
+	return LoadLocalRecord(kind, name)
+}
+
 func SaveLocalRecord(kind string, record LocalRecord) error {
 	path, err := localRecordPath(kind, record.Name)
 	if err != nil {

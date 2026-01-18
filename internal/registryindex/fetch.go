@@ -1,6 +1,7 @@
 package registryindex
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -101,7 +102,13 @@ func needsUpdate(kind, name, head string) (bool, error) {
 	if !ok {
 		return true, nil
 	}
-	return record.Head != head, nil
+	if record.Head != head {
+		return true, nil
+	}
+	if !cachedEntryExists(kind, name) {
+		return true, nil
+	}
+	return false, nil
 }
 
 func gitClone(repoURL, dest string) error {
@@ -109,10 +116,18 @@ func gitClone(repoURL, dest string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("git", "clone", "--depth", "1", url, dest)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	cmd := exec.Command("git", "clone", "--quiet", "--depth", "1", url, dest)
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(output.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("git clone failed: %s", msg)
+	}
+	return nil
 }
 
 func normalizeRepoURL(repo string) (string, error) {
@@ -127,4 +142,25 @@ func normalizeRepoURL(repo string) (string, error) {
 		return "https://github.com/" + repo + ".git", nil
 	}
 	return "", fmt.Errorf("unsupported repository format: %s", repo)
+}
+
+func cachedEntryExists(kind, name string) bool {
+	switch kind {
+	case "skill":
+		path, err := SkillPathInStore(name)
+		if err != nil {
+			return false
+		}
+		info, err := os.Stat(path)
+		return err == nil && info.IsDir()
+	case "mcp":
+		path, err := MCPPathInStore(name)
+		if err != nil {
+			return false
+		}
+		info, err := os.Stat(path)
+		return err == nil && info.Mode().IsRegular()
+	default:
+		return false
+	}
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"mcp-skill-manager/internal/cli"
 	"mcp-skill-manager/internal/installer"
 	"mcp-skill-manager/internal/mcp"
 	"mcp-skill-manager/internal/registryindex"
@@ -40,6 +41,8 @@ func (a *App) Run(args []string) int {
 		return a.runInstall(args[1:])
 	case "list":
 		return a.runList(args[1:])
+	case "update", "upgrade":
+		return a.runUpdate(args[1:])
 	case "uninstall", "remove", "rm":
 		return a.runUninstall(args[1:])
 	case "clean":
@@ -129,7 +132,19 @@ func (a *App) runInstall(args []string) int {
 	}
 
 	cwd, _ := os.Getwd()
-	records, err := mcp.Install(def, normalizedScope, cwd, clients, *forceShort || *forceLong)
+	force := *forceShort || *forceLong
+	spinner := cli.StartSpinner(a.errOut, "")
+	records, err := mcp.Install(def, normalizedScope, cwd, clients, force)
+	spinner.Stop()
+	if err != nil && !force && isAlreadyExistsError(err) {
+		if !confirmPrompt(a.out, "Server already exists. Overwrite? Type 'yes' to continue: ") {
+			fmt.Fprintln(a.out, "canceled")
+			return 0
+		}
+		spinner = cli.StartSpinner(a.errOut, "")
+		records, err = mcp.Install(def, normalizedScope, cwd, clients, true)
+		spinner.Stop()
+	}
 	if err != nil {
 		fmt.Fprintf(a.errOut, "install failed: %v\n", err)
 		return 1
@@ -396,6 +411,7 @@ func (a *App) printHelp() {
 Commands:
   install|i <source>   Install MCP servers from registry, local store, or file
   list                 List installed MCP servers
+  update|upgrade        Update installed MCP servers from registry
   uninstall|remove|rm  Remove installed MCP servers
   clean                Clear local store (~/.mcp-skill/skill and ~/.mcp-skill/mcp)
 
@@ -421,6 +437,141 @@ Examples:
   %s list
   %s list github -g -c claude
 `, a.binaryName, a.binaryName, a.binaryName, a.binaryName)
+}
+
+func (a *App) runUpdate(args []string) int {
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	fs.SetOutput(a.errOut)
+	globalShort := fs.Bool("g", false, "update global/user scope")
+	globalLong := fs.Bool("global", false, "update global/user scope")
+	localShort := fs.Bool("l", false, "update local/project scope")
+	localLong := fs.Bool("local", false, "update local/project scope")
+	projectLong := fs.Bool("project", false, "update local/project scope")
+	clientFlag := fs.String("client", "", "comma-separated clients: claude,codex,gemini,opencode")
+	clientShort := fs.String("c", "", "alias for --client")
+	toolFlag := fs.String("tool", "", "deprecated: use --client")
+	helpShort := fs.Bool("h", false, "show help")
+	helpLong := fs.Bool("help", false, "show help")
+
+	flags, positionals := splitArgs(args)
+	if err := fs.Parse(flags); err != nil {
+		return 2
+	}
+	if *helpShort || *helpLong {
+		a.printUpdateHelp()
+		return 0
+	}
+	if len(positionals) > 1 {
+		fmt.Fprintln(a.errOut, "update accepts at most one server name")
+		return 2
+	}
+	nameFilter := ""
+	if len(positionals) == 1 {
+		nameFilter = positionals[0]
+	}
+
+	clientValue, err := resolveListClientValue(*clientFlag, *clientShort, *toolFlag)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "invalid client selection: %v\n", err)
+		return 2
+	}
+	clients, err := installer.ParseTools(clientValue)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "invalid client list: %v\n", err)
+		return 2
+	}
+	scopes := resolveListScopes(*globalShort || *globalLong, *localShort || *localLong || *projectLong)
+	cwd, _ := os.Getwd()
+	items, err := mcp.List(scopes, cwd, clients)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "update failed: %v\n", err)
+		return 1
+	}
+	if len(items) == 0 {
+		fmt.Fprintln(a.out, "no servers installed")
+		return 0
+	}
+
+	var targets []mcp.Installed
+	for _, item := range items {
+		if nameFilter != "" && item.Name != nameFilter {
+			continue
+		}
+		targets = append(targets, item)
+	}
+	if len(targets) == 0 {
+		fmt.Fprintln(a.out, "no matching servers found")
+		return 0
+	}
+
+	spinner := cli.StartSpinner(a.errOut, "")
+	if err := registryindex.EnsureIndexes(); err != nil {
+		spinner.Stop()
+		fmt.Fprintf(a.errOut, "update failed: %v\n", err)
+		return 1
+	}
+
+	type result struct {
+		item    mcp.Installed
+		message string
+		err     error
+	}
+	var results []result
+	for _, item := range targets {
+		entry, ok, err := registryindex.FindMCP(item.Name)
+		if err != nil {
+			results = append(results, result{item: item, err: err})
+			continue
+		}
+		if !ok {
+			results = append(results, result{item: item, message: "not in registry"})
+			continue
+		}
+
+		record, ok, err := registryindex.LocalRecordFor("mcp", item.Name)
+		if err != nil {
+			results = append(results, result{item: item, err: err})
+			continue
+		}
+		if ok && record.Head == entry.Head {
+			results = append(results, result{item: item, message: "already latest"})
+			continue
+		}
+
+		if err := registryindex.SyncMCP(entry); err != nil {
+			results = append(results, result{item: item, err: err})
+			continue
+		}
+		def, err := mcp.LoadLocalDefinition(entry.Name)
+		if err != nil {
+			results = append(results, result{item: item, err: err})
+			continue
+		}
+		_, err = mcp.Install(def, item.Scope, cwd, []installer.Tool{item.Client}, true)
+		if err != nil {
+			results = append(results, result{item: item, err: err})
+			continue
+		}
+		results = append(results, result{item: item, message: "updated"})
+	}
+	spinner.Stop()
+	for _, res := range results {
+		if res.err != nil {
+			fmt.Fprintf(a.errOut, "update failed for %s (%s/%s): %v\n", res.item.Name, res.item.Client, res.item.Scope, res.err)
+			continue
+		}
+		fmt.Fprintf(a.out, "%s (%s/%s): %s\n", res.item.Name, res.item.Client, res.item.Scope, res.message)
+	}
+	return 0
+}
+
+func (a *App) printUpdateHelp() {
+	fmt.Fprintf(a.out, `Usage: %s update [name] [--global|-g] [--local|-l] [--client|-c <list>]
+
+Examples:
+  %s update
+  %s update github -g -c claude
+`, a.binaryName, a.binaryName, a.binaryName)
 }
 
 func (a *App) printUninstallHelp() {
@@ -588,6 +739,13 @@ func displayTransport(value string) string {
 		return "-"
 	}
 	return value
+}
+
+func isAlreadyExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "server already exists:")
 }
 
 func collectRemovalTargets(positionals []string, scope string, clients []installer.Tool) ([]mcp.Installed, error) {

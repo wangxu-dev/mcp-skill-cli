@@ -2,14 +2,18 @@ package skillcli
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
+	"mcp-skill-manager/internal/cli"
 	"mcp-skill-manager/internal/installer"
+	"mcp-skill-manager/internal/registryindex"
 	"mcp-skill-manager/internal/skill"
 )
 
@@ -38,6 +42,10 @@ func (a *App) Run(args []string) int {
 		return a.runInstall(args[1:])
 	case "list":
 		return a.runList(args[1:])
+	case "view":
+		return a.runView(args[1:])
+	case "update", "upgrade":
+		return a.runUpdate(args[1:])
 	case "uninstall", "remove", "rm":
 		return a.runUninstall(args[1:])
 	case "clean":
@@ -100,7 +108,19 @@ func (a *App) runInstall(args []string) int {
 	}
 	source := positionals[0]
 	cwd, _ := os.Getwd()
-	records, err := skill.Install(source, normalizedScope, cwd, tools, *forceShort || *forceLong)
+	force := *forceShort || *forceLong
+	spinner := cli.StartSpinner(a.errOut, "")
+	records, err := skill.Install(source, normalizedScope, cwd, tools, force)
+	spinner.Stop()
+	if err != nil && !force && isAlreadyExistsError(err) {
+		if !confirmPrompt(a.out, "Skill already exists. Overwrite? Type 'yes' to continue: ") {
+			fmt.Fprintln(a.out, "canceled")
+			return 0
+		}
+		spinner = cli.StartSpinner(a.errOut, "")
+		records, err = skill.Install(source, normalizedScope, cwd, tools, true)
+		spinner.Stop()
+	}
 	if err != nil {
 		fmt.Fprintf(a.errOut, "install failed: %v\n", err)
 		return 1
@@ -118,6 +138,8 @@ func (a *App) printHelp() {
 Commands:
   install|i <source>   Install skills from repo, local path, or local store
   list               List installed skills
+  view <name>         Show installed skill metadata
+  update|upgrade      Update installed skills from registry
   uninstall|remove|rm <name>   Remove an installed skill
   clean              Clear local store (~/.mcp-skill/skill and ~/.mcp-skill/mcp)
 
@@ -218,13 +240,21 @@ func (a *App) runList(args []string) int {
 			}
 			fmt.Fprintf(a.out, "%s (%s)\n", item.Client, item.Scope)
 			writer = tabwriter.NewWriter(a.out, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(writer, "SKILL\tPATH")
+			fmt.Fprintln(writer, "SKILL\tVERSION\tDESCRIPTION\tPATH")
 			printed = true
 			lastTool = item.Client
 			lastScope = item.Scope
 		}
 		matched++
-		fmt.Fprintf(writer, "%s\t%s\n", item.Name, item.Path)
+		version, _ := readSkillVersion(item.Path)
+		description := ""
+		meta, err := loadSkillMeta(item.Path)
+		if err == nil {
+			description = meta.Description
+		} else {
+			description, _ = readSkillDescription(item.Path)
+		}
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", item.Name, version, description, item.Path)
 	}
 
 	if matched == 0 {
@@ -250,6 +280,306 @@ Examples:
   %s list my-skill -g -c opencode
   %s list -g
 `, a.binaryName, a.binaryName, a.binaryName, a.binaryName)
+}
+
+func (a *App) runView(args []string) int {
+	fs := flag.NewFlagSet("view", flag.ContinueOnError)
+	fs.SetOutput(a.errOut)
+	installedFlag := fs.Bool("installed", false, "show installed skill info")
+	globalShort := fs.Bool("g", false, "show global/user scope (installed only)")
+	globalLong := fs.Bool("global", false, "show global/user scope (installed only)")
+	localShort := fs.Bool("l", false, "show local/project scope (installed only)")
+	localLong := fs.Bool("local", false, "show local/project scope (installed only)")
+	projectLong := fs.Bool("project", false, "show local/project scope (installed only)")
+	clientFlag := fs.String("client", "", "comma-separated clients: claude,codex,gemini,opencode (installed only)")
+	clientShort := fs.String("c", "", "alias for --client")
+	toolFlag := fs.String("tool", "", "deprecated: use --client")
+	helpShort := fs.Bool("h", false, "show help")
+	helpLong := fs.Bool("help", false, "show help")
+
+	flags, positionals := splitArgs(args)
+	if err := fs.Parse(flags); err != nil {
+		return 2
+	}
+	if *helpShort || *helpLong {
+		a.printViewHelp()
+		return 0
+	}
+	if len(positionals) == 0 {
+		fmt.Fprintln(a.errOut, "view requires a skill name")
+		return 2
+	}
+	if len(positionals) > 1 {
+		fmt.Fprintln(a.errOut, "view accepts a single skill name")
+		return 2
+	}
+
+	name := positionals[0]
+	if *installedFlag {
+		clientValue, err := resolveListClientValue(*clientFlag, *clientShort, *toolFlag)
+		if err != nil {
+			fmt.Fprintf(a.errOut, "invalid client selection: %v\n", err)
+			return 2
+		}
+		tools, err := installer.ParseTools(clientValue)
+		if err != nil {
+			fmt.Fprintf(a.errOut, "invalid client list: %v\n", err)
+			return 2
+		}
+		scopes := resolveListScopes(*globalShort || *globalLong, *localShort || *localLong || *projectLong)
+		cwd, _ := os.Getwd()
+		items, err := skill.List(scopes, cwd, tools)
+		if err != nil {
+			fmt.Fprintf(a.errOut, "view failed: %v\n", err)
+			return 1
+		}
+
+		var matches []skill.Installed
+		for _, item := range items {
+			if item.Name == name {
+				matches = append(matches, item)
+			}
+		}
+		if len(matches) == 0 {
+			fmt.Fprintln(a.out, "no matching skills found")
+			return 0
+		}
+		for idx, item := range matches {
+			if idx > 0 {
+				fmt.Fprintln(a.out)
+			}
+			fmt.Fprintf(a.out, "%s (%s)\n", item.Client, item.Scope)
+			meta, err := loadSkillMeta(item.Path)
+			if err != nil && !os.IsNotExist(err) {
+				fmt.Fprintf(a.errOut, "view failed: %v\n", err)
+				return 1
+			}
+			version, _ := readSkillVersion(item.Path)
+			printSkillMeta(a.out, item.Name, meta, version)
+		}
+		return 0
+	}
+
+	spinner := cli.StartSpinner(a.errOut, "")
+	if err := registryindex.EnsureIndexes(); err != nil {
+		spinner.Stop()
+		fmt.Fprintf(a.errOut, "view failed: %v\n", err)
+		return 1
+	}
+	entry, ok, err := registryindex.FindSkill(name)
+	if err != nil {
+		spinner.Stop()
+		fmt.Fprintf(a.errOut, "view failed: %v\n", err)
+		return 1
+	}
+	if !ok {
+		spinner.Stop()
+		fmt.Fprintln(a.out, "skill not found in registry")
+		return 0
+	}
+	meta, err := fetchRemoteSkillMeta(entry.Name)
+	spinner.Stop()
+	if err != nil {
+		if isRemoteNotFound(err) {
+			fmt.Fprintln(a.out, "skill not found in registry")
+			return 0
+		}
+		fmt.Fprintf(a.errOut, "view failed: %v\n", err)
+		return 1
+	}
+	printSkillMeta(a.out, entry.Name, meta, meta.Version)
+	return 0
+}
+
+func (a *App) printViewHelp() {
+	fmt.Fprintf(a.out, `Usage: %s view <name> [--installed] [--global|-g] [--local|-l] [--client|-c <list>]
+
+Examples:
+  %s view work-session
+  %s view work-session --installed -g -c claude
+`, a.binaryName, a.binaryName, a.binaryName)
+}
+
+func (a *App) runUpdate(args []string) int {
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	fs.SetOutput(a.errOut)
+	globalShort := fs.Bool("g", false, "update global/user scope")
+	globalLong := fs.Bool("global", false, "update global/user scope")
+	localShort := fs.Bool("l", false, "update local/project scope")
+	localLong := fs.Bool("local", false, "update local/project scope")
+	projectLong := fs.Bool("project", false, "update local/project scope")
+	clientFlag := fs.String("client", "", "comma-separated clients: claude,codex,gemini,opencode")
+	clientShort := fs.String("c", "", "alias for --client")
+	toolFlag := fs.String("tool", "", "deprecated: use --client")
+	helpShort := fs.Bool("h", false, "show help")
+	helpLong := fs.Bool("help", false, "show help")
+
+	flags, positionals := splitArgs(args)
+	if err := fs.Parse(flags); err != nil {
+		return 2
+	}
+	if *helpShort || *helpLong {
+		a.printUpdateHelp()
+		return 0
+	}
+	if len(positionals) > 1 {
+		fmt.Fprintln(a.errOut, "update accepts at most one skill name")
+		return 2
+	}
+	nameFilter := ""
+	if len(positionals) == 1 {
+		nameFilter = positionals[0]
+	}
+
+	clientValue, err := resolveListClientValue(*clientFlag, *clientShort, *toolFlag)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "invalid client selection: %v\n", err)
+		return 2
+	}
+	tools, err := installer.ParseTools(clientValue)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "invalid client list: %v\n", err)
+		return 2
+	}
+	scopes := resolveListScopes(*globalShort || *globalLong, *localShort || *localLong || *projectLong)
+	cwd, _ := os.Getwd()
+	items, err := skill.List(scopes, cwd, tools)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "update failed: %v\n", err)
+		return 1
+	}
+	if len(items) == 0 {
+		fmt.Fprintln(a.out, "no skills installed")
+		return 0
+	}
+
+	var targets []skill.Installed
+	for _, item := range items {
+		if nameFilter != "" && item.Name != nameFilter {
+			continue
+		}
+		targets = append(targets, item)
+	}
+	if len(targets) == 0 {
+		fmt.Fprintln(a.out, "no matching skills found")
+		return 0
+	}
+
+	spinner := cli.StartSpinner(a.errOut, "")
+	if err := registryindex.EnsureIndexes(); err != nil {
+		spinner.Stop()
+		fmt.Fprintf(a.errOut, "update failed: %v\n", err)
+		return 1
+	}
+
+	type result struct {
+		item    skill.Installed
+		message string
+		err     error
+	}
+	var results []result
+	for _, item := range targets {
+		entry, ok, err := registryindex.FindSkill(item.Name)
+		if err != nil {
+			results = append(results, result{item: item, err: err})
+			continue
+		}
+		if !ok {
+			results = append(results, result{item: item, message: "not in registry"})
+			continue
+		}
+		remoteMeta, remoteErr := fetchRemoteSkillMeta(entry.Name)
+		if remoteErr != nil {
+			localPath, err := localStoreSkillPath(item.Name)
+			if err != nil {
+				results = append(results, result{item: item, err: err})
+				continue
+			}
+			if err := registryindex.SyncSkill(entry); err != nil {
+				results = append(results, result{item: item, err: err})
+				continue
+			}
+			needsUpdate, installedVersion, cachedVersion, err := needsSkillUpdate(item.Path, localPath)
+			if err != nil {
+				results = append(results, result{item: item, err: err})
+				continue
+			}
+			if !needsUpdate {
+				label := "already latest"
+				if installedVersion != "" {
+					label = fmt.Sprintf("already latest (%s)", installedVersion)
+				}
+				results = append(results, result{item: item, message: label})
+				continue
+			}
+			records, err := skill.Install(entry.Name, item.Scope, cwd, []installer.Tool{item.Client}, true)
+			if err != nil {
+				results = append(results, result{item: item, err: err})
+				continue
+			}
+			_ = records
+			msg := "updated"
+			if cachedVersion != "" {
+				msg = fmt.Sprintf("updated to %s", cachedVersion)
+			}
+			results = append(results, result{item: item, message: msg})
+			continue
+		}
+
+		installedMeta, _ := loadSkillMeta(item.Path)
+		installedVersion, _ := readSkillVersion(item.Path)
+		if installedVersion == "" {
+			installedVersion = installedMeta.Version
+		}
+		if remoteMeta.Version != "" && installedVersion != "" && remoteMeta.Version == installedVersion {
+			label := fmt.Sprintf("already latest (%s)", installedVersion)
+			results = append(results, result{item: item, message: label})
+			continue
+		}
+		if remoteMeta.Head != "" && installedMeta.Head != "" && remoteMeta.Head == installedMeta.Head {
+			label := "already latest"
+			if installedVersion != "" {
+				label = fmt.Sprintf("already latest (%s)", installedVersion)
+			}
+			results = append(results, result{item: item, message: label})
+			continue
+		}
+
+		if err := registryindex.SyncSkill(entry); err != nil {
+			results = append(results, result{item: item, err: err})
+			continue
+		}
+		records, err := skill.Install(entry.Name, item.Scope, cwd, []installer.Tool{item.Client}, true)
+		if err != nil {
+			results = append(results, result{item: item, err: err})
+			continue
+		}
+		_ = records
+		msg := "updated"
+		if remoteMeta.Version != "" {
+			msg = fmt.Sprintf("updated to %s", remoteMeta.Version)
+		}
+		results = append(results, result{item: item, message: msg})
+	}
+	spinner.Stop()
+
+	for _, res := range results {
+		if res.err != nil {
+			fmt.Fprintf(a.errOut, "update failed for %s (%s/%s): %v\n", res.item.Name, res.item.Client, res.item.Scope, res.err)
+			continue
+		}
+		fmt.Fprintf(a.out, "%s (%s/%s): %s\n", res.item.Name, res.item.Client, res.item.Scope, res.message)
+	}
+	return 0
+}
+
+func (a *App) printUpdateHelp() {
+	fmt.Fprintf(a.out, `Usage: %s update [name] [--global|-g] [--local|-l] [--client|-c <list>]
+
+Examples:
+  %s update
+  %s update work-session -l -c claude
+`, a.binaryName, a.binaryName, a.binaryName)
 }
 
 func (a *App) runUninstall(args []string) int {
@@ -539,6 +869,66 @@ func matchesSkillFilter(name, filter string) bool {
 		return true
 	}
 	return strings.Contains(strings.ToLower(name), strings.ToLower(filter))
+}
+
+func printSkillMeta(out io.Writer, name string, meta SkillMeta, version string) {
+	displayName := name
+	if meta.Name != "" {
+		displayName = meta.Name
+	}
+	fmt.Fprintf(out, "name: %s\n", displayName)
+	if version != "" {
+		fmt.Fprintf(out, "version: %s\n", version)
+	}
+	if meta.Description != "" {
+		fmt.Fprintf(out, "description: %s\n", meta.Description)
+	}
+	if meta.UpdatedAt != "" {
+		fmt.Fprintf(out, "updatedAt: %s\n", meta.UpdatedAt)
+	}
+}
+
+func isAlreadyExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "skill already exists:")
+}
+
+func localStoreSkillPath(name string) (string, error) {
+	root, err := installer.LocalSkillStore()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, name), nil
+}
+
+func needsSkillUpdate(installedPath, cachedPath string) (bool, string, string, error) {
+	installedVersion, installedErr := readSkillVersion(installedPath)
+	if installedErr != nil && !os.IsNotExist(installedErr) {
+		return false, "", "", installedErr
+	}
+	cachedVersion, cachedErr := readSkillVersion(cachedPath)
+	if cachedErr != nil && !os.IsNotExist(cachedErr) {
+		return false, "", "", cachedErr
+	}
+	if installedVersion != "" && cachedVersion != "" {
+		return installedVersion != cachedVersion, installedVersion, cachedVersion, nil
+	}
+	if installedVersion == "" && cachedVersion == "" {
+		installedData, err := os.ReadFile(filepath.Join(installedPath, "SKILL.md"))
+		if err != nil && !os.IsNotExist(err) {
+			return false, "", "", err
+		}
+		cachedData, err := os.ReadFile(filepath.Join(cachedPath, "SKILL.md"))
+		if err != nil && !os.IsNotExist(err) {
+			return false, "", "", err
+		}
+		if len(installedData) > 0 && len(cachedData) > 0 {
+			return !bytes.Equal(installedData, cachedData), "", "", nil
+		}
+	}
+	return true, installedVersion, cachedVersion, nil
 }
 
 func splitArgs(args []string) ([]string, []string) {

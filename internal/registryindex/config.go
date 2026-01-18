@@ -45,3 +45,7 @@ func rawBaseURL() (string, error) {
 	}
 	return fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/", repo, registryBranch()), nil
 }
+
+func RawBaseURL() (string, error) {
+	return rawBaseURL()
+}
