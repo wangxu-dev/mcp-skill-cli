@@ -12,8 +12,8 @@ import (
 )
 
 func SyncSkill(entry SkillEntry) error {
-	if strings.TrimSpace(entry.Name) == "" || strings.TrimSpace(entry.Repo) == "" || strings.TrimSpace(entry.Path) == "" {
-		return fmt.Errorf("invalid skill entry: missing name/repo/path")
+	if strings.TrimSpace(entry.Name) == "" {
+		return fmt.Errorf("invalid skill entry: missing name")
 	}
 
 	needs, err := needsUpdate("skill", entry.Name, entry.Head)
@@ -30,13 +30,17 @@ func SyncSkill(entry SkillEntry) error {
 	}
 	defer os.RemoveAll(tempDir)
 
-	if err := gitClone(entry.Repo, tempDir); err != nil {
+	repo := registryRepo()
+	if strings.TrimSpace(repo) == "" {
+		return fmt.Errorf("registry repo is empty")
+	}
+	if err := gitClone(repo, tempDir); err != nil {
 		return err
 	}
 
-	path := filepath.Join(tempDir, filepath.FromSlash(entry.Path))
+	path := filepath.Join(tempDir, "skill", entry.Name)
 	if _, err := os.Stat(path); err != nil {
-		return fmt.Errorf("skill path not found: %s", entry.Path)
+		return fmt.Errorf("skill path not found: skill/%s", entry.Name)
 	}
 	if _, err := installer.CacheSkillDir(path); err != nil {
 		return err
