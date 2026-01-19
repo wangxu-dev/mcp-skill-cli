@@ -1041,9 +1041,6 @@ func printMcpEntry(out io.Writer, entry registryindex.MCPEntry) {
 	if entry.UpdatedAt != "" {
 		fmt.Fprintf(out, "updatedAt: %s\n", entry.UpdatedAt)
 	}
-	if entry.CheckedAt != "" {
-		fmt.Fprintf(out, "checkedAt: %s\n", entry.CheckedAt)
-	}
 	if len(entry.Requires) > 0 {
 		fmt.Fprintf(out, "requires: %s\n", strings.Join(entry.Requires, ", "))
 	}
