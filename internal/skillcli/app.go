@@ -168,6 +168,8 @@ func (a *App) runList(args []string) int {
 	localShort := fs.Bool("l", false, "show local/project scope")
 	localLong := fs.Bool("local", false, "show local/project scope")
 	projectLong := fs.Bool("project", false, "show local/project scope")
+	availableShort := fs.Bool("a", false, "list available skills from registry")
+	availableLong := fs.Bool("available", false, "list available skills from registry")
 	clientFlag := fs.String("client", "", "comma-separated clients: claude,codex,gemini,opencode,cursor,amp,kilocode,roo,goose,antigravity,copilot,clawdbot,droid,windsurf")
 	clientShort := fs.String("c", "", "alias for --client")
 	toolFlag := fs.String("tool", "", "deprecated: use --client")
@@ -190,6 +192,10 @@ func (a *App) runList(args []string) int {
 	skillFilter := ""
 	if len(positionals) == 1 {
 		skillFilter = positionals[0]
+	}
+
+	if *availableShort || *availableLong {
+		return a.runListAvailable(skillFilter)
 	}
 
 	clientValue, err := resolveListClientValue(*clientFlag, *clientShort, *toolFlag)
@@ -272,14 +278,15 @@ func (a *App) runList(args []string) int {
 }
 
 func (a *App) printListHelp() {
-	fmt.Fprintf(a.out, `Usage: %s list [skill] [--global|-g] [--local|-l] [--client|-c <list>]
+	fmt.Fprintf(a.out, `Usage: %s list [skill] [--global|-g] [--local|-l] [--client|-c <list>] [--available|-a]
 
 Examples:
   %s list
+  %s list --available
   %s list my-skill -l
   %s list my-skill -g -c opencode
   %s list -g
-`, a.binaryName, a.binaryName, a.binaryName, a.binaryName)
+`, a.binaryName, a.binaryName, a.binaryName, a.binaryName, a.binaryName)
 }
 
 func (a *App) runView(args []string) int {
@@ -569,6 +576,56 @@ func (a *App) runUpdate(args []string) int {
 			continue
 		}
 		fmt.Fprintf(a.out, "%s (%s/%s): %s\n", res.item.Name, res.item.Client, res.item.Scope, res.message)
+	}
+	return 0
+}
+
+func (a *App) runListAvailable(filter string) int {
+	spinner := cli.StartSpinner(a.errOut, "")
+	if err := registryindex.EnsureIndexes(); err != nil {
+		spinner.Stop()
+		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
+		return 1
+	}
+	index, err := registryindex.LoadSkillIndex()
+	if err != nil {
+		spinner.Stop()
+		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
+		return 1
+	}
+
+	writer := tabwriter.NewWriter(a.out, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(writer, "SKILL\tUPDATED\tDESCRIPTION")
+	matched := 0
+	for _, entry := range index.Skills {
+		if filter != "" && !matchesSkillFilter(entry.Name, filter) {
+			continue
+		}
+		meta, err := fetchRemoteSkillMeta(entry.Name)
+		if err != nil && !isRemoteNotFound(err) {
+			spinner.Stop()
+			fmt.Fprintf(a.errOut, "list failed: %v\n", err)
+			return 1
+		}
+		updatedAt := entry.UpdatedAt
+		description := ""
+		if err == nil {
+			if meta.UpdatedAt != "" {
+				updatedAt = meta.UpdatedAt
+			}
+			description = meta.Description
+		}
+		description = truncateDescription(description, 80)
+		fmt.Fprintf(writer, "%s\t%s\t%s\n", entry.Name, updatedAt, description)
+		matched++
+	}
+	spinner.Stop()
+	if err := writer.Flush(); err != nil {
+		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
+		return 1
+	}
+	if matched == 0 {
+		fmt.Fprintln(a.out, "no matching skills found")
 	}
 	return 0
 }
@@ -869,6 +926,20 @@ func matchesSkillFilter(name, filter string) bool {
 		return true
 	}
 	return strings.Contains(strings.ToLower(name), strings.ToLower(filter))
+}
+
+func truncateDescription(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if value == "" || limit <= 0 {
+		return value
+	}
+	if len(value) <= limit {
+		return value
+	}
+	if limit <= 3 {
+		return value[:limit]
+	}
+	return value[:limit-3] + "..."
 }
 
 func printSkillMeta(out io.Writer, name string, meta SkillMeta, version string) {
