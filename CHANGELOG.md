@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.0.5 - 2026-01-19
+### Added
+- MCP registry install with interactive prompts, cache reuse, and registry metadata checks.
+- `mcp list --available` to browse registry servers.
+- `mcp view` with default registry info and `--installed` for local config details.
+- HTTP header support in MCP definitions (HTTP transport).
+- `skill list --available` to browse registry skills with updated timestamps.
+- Support for new skill clients: cursor, amp, kilocode, roo, goose, antigravity, copilot, clawdbot, droid, windsurf.
+- Spinner tips and friendlier CLI help text for common commands.
+### Changed
+- MCP update logic now checks registry `updatedAt`/`head` before reinstalling.
+- MCP installs reuse local cache and avoid repeated cloning when up-to-date.
+- Codex MCP installs are user-scope only (project scope blocked).
+- MCP `view` hides `checkedAt` and focuses on user-facing metadata.
+
 ## 0.0.4 - 2026-01-18
 ### Added
 - `skill view` defaulting to registry metadata (raw fetch) with `--installed` for local view.
