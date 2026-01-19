@@ -15,12 +15,12 @@ func GeminiConfigPath(scope, cwd string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(home, ".gemini", "mcp.json"), nil
+		return filepath.Join(home, ".gemini", "settings.json"), nil
 	case installer.ScopeProject:
 		if cwd == "" {
 			return "", fmt.Errorf("project scope requires working directory")
 		}
-		return filepath.Join(cwd, ".gemini", "mcp.json"), nil
+		return filepath.Join(cwd, ".gemini", "settings.json"), nil
 	default:
 		return "", fmt.Errorf("invalid scope: %s", scope)
 	}

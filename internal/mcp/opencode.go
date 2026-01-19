@@ -15,7 +15,7 @@ func OpenCodeConfigPath(scope, cwd string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(home, ".config", "opencode", "config.json"), nil
+		return filepath.Join(home, ".config", "opencode", "opencode.json"), nil
 	case installer.ScopeProject:
 		if cwd == "" {
 			return "", fmt.Errorf("project scope requires working directory")

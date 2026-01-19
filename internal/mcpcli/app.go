@@ -98,10 +98,33 @@ func (a *App) runInstall(args []string) int {
 		fmt.Fprintf(a.errOut, "invalid client list: %v\n", err)
 		return 2
 	}
+	clients, err = normalizeMcpClients(clients, clientValue)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "invalid client selection: %v\n", err)
+		return 2
+	}
+	clients, err = normalizeMcpClients(clients, clientValue)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "invalid client selection: %v\n", err)
+		return 2
+	}
+	clients, err = normalizeMcpClients(clients, clientValue)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "invalid client selection: %v\n", err)
+		return 2
+	}
 
 	normalizedScope, err := resolveScope(*scope, *globalShort || *globalLong, *localShort || *localLong || *projectLong)
 	if err != nil {
 		fmt.Fprintf(a.errOut, "invalid scope: %v\n", err)
+		return 2
+	}
+	if normalizedScope == installer.ScopeProject && containsClient(clients, installer.ToolCodex) {
+		fmt.Fprintln(a.errOut, "codex MCP only supports user scope; use --global")
+		return 2
+	}
+	if normalizedScope == installer.ScopeProject && containsClient(clients, installer.ToolCodex) {
+		fmt.Fprintln(a.errOut, "codex MCP only supports user scope; use --global")
 		return 2
 	}
 
@@ -200,6 +223,10 @@ func (a *App) runList(args []string) int {
 	}
 
 	scopes := resolveListScopes(*globalShort || *globalLong, *localShort || *localLong || *projectLong)
+	if containsScope(scopes, installer.ScopeProject) && containsClient(clients, installer.ToolCodex) {
+		fmt.Fprintln(a.errOut, "codex MCP only supports user scope; use --global")
+		return 2
+	}
 	cwd, _ := os.Getwd()
 	items, err := mcp.List(scopes, cwd, clients)
 	if err != nil {
@@ -480,7 +507,16 @@ func (a *App) runUpdate(args []string) int {
 		fmt.Fprintf(a.errOut, "invalid client list: %v\n", err)
 		return 2
 	}
+	clients, err = normalizeMcpClients(clients, clientValue)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "invalid client selection: %v\n", err)
+		return 2
+	}
 	scopes := resolveListScopes(*globalShort || *globalLong, *localShort || *localLong || *projectLong)
+	if containsScope(scopes, installer.ScopeProject) && containsClient(clients, installer.ToolCodex) {
+		fmt.Fprintln(a.errOut, "codex MCP only supports user scope; use --global")
+		return 2
+	}
 	cwd, _ := os.Getwd()
 	items, err := mcp.List(scopes, cwd, clients)
 	if err != nil {
@@ -792,6 +828,49 @@ func confirmPrompt(out io.Writer, prompt string) bool {
 func isHelp(value string) bool {
 	value = strings.ToLower(strings.TrimSpace(value))
 	return value == "-h" || value == "--help" || value == "help"
+}
+
+func normalizeMcpClients(clients []installer.Tool, clientValue string) ([]installer.Tool, error) {
+	allowed := map[installer.Tool]bool{
+		installer.ToolClaude:   true,
+		installer.ToolCodex:    true,
+		installer.ToolGemini:   true,
+		installer.ToolOpenCode: true,
+	}
+	var filtered []installer.Tool
+	var unsupported []string
+	for _, client := range clients {
+		if allowed[client] {
+			filtered = append(filtered, client)
+			continue
+		}
+		unsupported = append(unsupported, string(client))
+	}
+	if len(unsupported) > 0 && strings.TrimSpace(clientValue) != "" && clientValue != "all" {
+		return nil, fmt.Errorf("unsupported MCP clients: %s", strings.Join(unsupported, ", "))
+	}
+	if len(filtered) == 0 {
+		return nil, fmt.Errorf("no supported MCP clients selected")
+	}
+	return filtered, nil
+}
+
+func containsClient(clients []installer.Tool, target installer.Tool) bool {
+	for _, client := range clients {
+		if client == target {
+			return true
+		}
+	}
+	return false
+}
+
+func containsScope(scopes []string, target string) bool {
+	for _, scope := range scopes {
+		if scope == target {
+			return true
+		}
+	}
+	return false
 }
 
 func countEntries(path string) (int, error) {

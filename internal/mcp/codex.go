@@ -18,10 +18,7 @@ func CodexConfigPath(scope, cwd string) (string, error) {
 		}
 		return filepath.Join(home, ".codex", "config.toml"), nil
 	case installer.ScopeProject:
-		if cwd == "" {
-			return "", fmt.Errorf("project scope requires working directory")
-		}
-		return filepath.Join(cwd, ".vscode", "mcp.json"), nil
+		return "", fmt.Errorf("codex does not support project-scoped MCP")
 	default:
 		return "", fmt.Errorf("invalid scope: %s", scope)
 	}
@@ -31,8 +28,6 @@ func InstallCodex(def Definition, scope, cwd string, force bool) (string, error)
 	switch scope {
 	case installer.ScopeUser:
 		return installCodexGlobal(def, cwd, force)
-	case installer.ScopeProject:
-		return installCodexProject(def, cwd, force)
 	default:
 		return "", fmt.Errorf("invalid scope: %s", scope)
 	}
@@ -42,8 +37,6 @@ func UninstallCodex(name, scope, cwd string, force bool) (string, error) {
 	switch scope {
 	case installer.ScopeUser:
 		return uninstallCodexGlobal(name, cwd, force)
-	case installer.ScopeProject:
-		return uninstallCodexProject(name, cwd, force)
 	default:
 		return "", fmt.Errorf("invalid scope: %s", scope)
 	}
@@ -53,8 +46,6 @@ func ListCodex(scope, cwd string) ([]Entry, string, error) {
 	switch scope {
 	case installer.ScopeUser:
 		return listCodexGlobal(cwd)
-	case installer.ScopeProject:
-		return listCodexProject(cwd)
 	default:
 		return nil, "", fmt.Errorf("invalid scope: %s", scope)
 	}
@@ -145,62 +136,6 @@ func listCodexGlobal(cwd string) ([]Entry, string, error) {
 		})
 	}
 	return entries, path, nil
-}
-
-func installCodexProject(def Definition, cwd string, force bool) (string, error) {
-	path, err := CodexConfigPath(installer.ScopeProject, cwd)
-	if err != nil {
-		return "", err
-	}
-	config, err := loadJSONConfig(path)
-	if err != nil {
-		return "", err
-	}
-	servers := ensureMap(config, "servers")
-	if _, exists := servers[def.Name]; exists && !force {
-		return "", fmt.Errorf("server already exists: %s", def.Name)
-	}
-	servers[def.Name] = toClaudeServer(def)
-	if err := writeJSONConfig(path, config); err != nil {
-		return "", err
-	}
-	return path, nil
-}
-
-func uninstallCodexProject(name, cwd string, force bool) (string, error) {
-	path, err := CodexConfigPath(installer.ScopeProject, cwd)
-	if err != nil {
-		return "", err
-	}
-	config, err := loadJSONConfig(path)
-	if err != nil {
-		return "", err
-	}
-	servers := ensureMap(config, "servers")
-	if _, exists := servers[name]; !exists {
-		if force {
-			return path, nil
-		}
-		return "", fmt.Errorf("server not found: %s", name)
-	}
-	delete(servers, name)
-	if err := writeJSONConfig(path, config); err != nil {
-		return "", err
-	}
-	return path, nil
-}
-
-func listCodexProject(cwd string) ([]Entry, string, error) {
-	path, err := CodexConfigPath(installer.ScopeProject, cwd)
-	if err != nil {
-		return nil, "", err
-	}
-	config, err := loadJSONConfig(path)
-	if err != nil {
-		return nil, "", err
-	}
-	servers := ensureMap(config, "servers")
-	return extractEntries(servers), path, nil
 }
 
 func detectTomlTransport(lines []string) string {
