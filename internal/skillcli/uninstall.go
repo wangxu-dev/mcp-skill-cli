@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"mcp-skill-manager/internal/cli"
 	"mcp-skill-manager/internal/installer"
 	"mcp-skill-manager/internal/skill"
 )
@@ -74,16 +75,20 @@ func (a *App) runUninstall(args []string) int {
 			return 0
 		}
 	}
-	if len(positionals) == 0 {
-		if !allRequested {
-			fmt.Fprintln(a.errOut, "uninstall requires a skill name (or use -a)")
-			return 2
-		}
-		records, err = skill.UninstallAll(normalizedScope, cwd, tools)
-	} else {
-		name := positionals[0]
-		records, err = skill.Uninstall(name, normalizedScope, cwd, tools, *forceShort || *forceLong)
+	if len(positionals) == 0 && !allRequested {
+		fmt.Fprintln(a.errOut, "uninstall requires a skill name (or use -a)")
+		return 2
 	}
+	err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
+		var uninstallErr error
+		if len(positionals) == 0 {
+			records, uninstallErr = skill.UninstallAll(normalizedScope, cwd, tools)
+			return uninstallErr
+		}
+		name := positionals[0]
+		records, uninstallErr = skill.Uninstall(name, normalizedScope, cwd, tools, *forceShort || *forceLong)
+		return uninstallErr
+	})
 	if err != nil {
 		fmt.Fprintf(a.errOut, "uninstall failed: %v\n", err)
 		return 1

@@ -6,7 +6,6 @@ import (
 	"os"
 	"sort"
 	"text/tabwriter"
-	"time"
 
 	"mcp-skill-manager/internal/cli"
 	"mcp-skill-manager/internal/installer"
@@ -69,7 +68,12 @@ func (a *App) runList(args []string) int {
 		return 2
 	}
 	cwd, _ := os.Getwd()
-	items, err := mcp.List(scopes, cwd, clients)
+	var items []mcp.Installed
+	err := cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
+		var listErr error
+		items, listErr = mcp.List(scopes, cwd, clients)
+		return listErr
+	})
 	if err != nil {
 		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
 		return 1
@@ -137,7 +141,7 @@ func (a *App) runList(args []string) int {
 }
 
 func (a *App) runListAvailable(nameFilter string) int {
-	err := cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), time.Second, func() error {
+	err := cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
 		return registryindex.EnsureIndexes()
 	})
 	if err != nil {

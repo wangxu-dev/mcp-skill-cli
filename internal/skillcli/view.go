@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"time"
 
 	"mcp-skill-manager/internal/cli"
 	"mcp-skill-manager/internal/installer"
@@ -58,7 +57,12 @@ func (a *App) runView(args []string) int {
 		}
 		scopes := resolveListScopes(*globalShort || *globalLong, *localShort || *localLong || *projectLong)
 		cwd, _ := os.Getwd()
-		items, err := skill.List(scopes, cwd, tools)
+		var items []skill.Installed
+		err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
+			var listErr error
+			items, listErr = skill.List(scopes, cwd, tools)
+			return listErr
+		})
 		if err != nil {
 			fmt.Fprintf(a.errOut, "view failed: %v\n", err)
 			return 1
@@ -90,7 +94,7 @@ func (a *App) runView(args []string) int {
 		return 0
 	}
 
-	err := cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), time.Second, func() error {
+	err := cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
 		return registryindex.EnsureIndexes()
 	})
 	if err != nil {

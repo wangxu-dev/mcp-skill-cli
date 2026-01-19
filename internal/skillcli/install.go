@@ -3,13 +3,11 @@ package skillcli
 import (
 	"flag"
 	"fmt"
-	"os"
-	"strings"
-	"time"
-
 	"mcp-skill-manager/internal/cli"
 	"mcp-skill-manager/internal/installer"
 	"mcp-skill-manager/internal/skill"
+	"os"
+	"strings"
 )
 
 func (a *App) runInstall(args []string) int {
@@ -66,7 +64,7 @@ func (a *App) runInstall(args []string) int {
 	force := *forceShort || *forceLong
 
 	var records []skill.Installed
-	err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), time.Second, func() error {
+	err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
 		var installErr error
 		records, installErr = skill.Install(source, normalizedScope, cwd, tools, force)
 		return installErr
@@ -76,7 +74,7 @@ func (a *App) runInstall(args []string) int {
 			fmt.Fprintln(a.out, "canceled")
 			return 0
 		}
-		err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), time.Second, func() error {
+		err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
 			var installErr error
 			records, installErr = skill.Install(source, normalizedScope, cwd, tools, true)
 			return installErr

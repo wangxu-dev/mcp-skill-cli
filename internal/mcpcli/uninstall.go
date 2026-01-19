@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"mcp-skill-manager/internal/cli"
 	"mcp-skill-manager/internal/installer"
 	"mcp-skill-manager/internal/mcp"
 )
@@ -75,16 +76,20 @@ func (a *App) runUninstall(args []string) int {
 
 	cwd, _ := os.Getwd()
 	var records []mcp.Installed
-	if len(positionals) == 0 {
-		if !allRequested {
-			fmt.Fprintln(a.errOut, "uninstall requires a server name (or use -a)")
-			return 2
-		}
-		records, err = mcp.UninstallAll(normalizedScope, cwd, clients)
-	} else {
-		name := positionals[0]
-		records, err = mcp.Uninstall(name, normalizedScope, cwd, clients, *forceShort || *forceLong)
+	if len(positionals) == 0 && !allRequested {
+		fmt.Fprintln(a.errOut, "uninstall requires a server name (or use -a)")
+		return 2
 	}
+	err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
+		var uninstallErr error
+		if len(positionals) == 0 {
+			records, uninstallErr = mcp.UninstallAll(normalizedScope, cwd, clients)
+			return uninstallErr
+		}
+		name := positionals[0]
+		records, uninstallErr = mcp.Uninstall(name, normalizedScope, cwd, clients, *forceShort || *forceLong)
+		return uninstallErr
+	})
 	if err != nil {
 		fmt.Fprintf(a.errOut, "uninstall failed: %v\n", err)
 		return 1

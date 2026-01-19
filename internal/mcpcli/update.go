@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"time"
 
 	"mcp-skill-manager/internal/cli"
 	"mcp-skill-manager/internal/installer"
@@ -87,7 +86,7 @@ func (a *App) runUpdate(args []string) int {
 		return 0
 	}
 
-	err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), time.Second, func() error {
+	err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
 		return registryindex.EnsureIndexes()
 	})
 	if err != nil {

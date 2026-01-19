@@ -55,7 +55,7 @@ func installFromRegistryEntry(entry registryindex.MCPEntry, opts registryInstall
 			return nil, err
 		}
 		if repoUpdated || opts.Force {
-			err = cli.RunWithSpinner(opts.SpinnerOut, "", cli.DefaultTips(), time.Second, func() error {
+			err = cli.RunWithSpinner(opts.SpinnerOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
 				return runInstallSteps(entry.Install, repoPath)
 			})
 			if err != nil {
@@ -258,7 +258,7 @@ func ensureRepo(entry registryindex.MCPEntry, opts registryInstallOptions) (stri
 		}
 	}
 
-	err = cli.RunWithSpinner(opts.SpinnerOut, "", cli.DefaultTips(), time.Second, func() error {
+	err = cli.RunWithSpinner(opts.SpinnerOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
 		if exists {
 			if err := os.RemoveAll(dest); err != nil {
 				return err

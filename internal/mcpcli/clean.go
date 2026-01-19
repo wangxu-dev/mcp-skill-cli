@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 
+	"mcp-skill-manager/internal/cli"
 	"mcp-skill-manager/internal/installer"
 )
 
@@ -50,7 +51,10 @@ func (a *App) runClean(args []string) int {
 		return 0
 	}
 
-	if err := installer.CleanLocalStore(); err != nil {
+	err := cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
+		return installer.CleanLocalStore()
+	})
+	if err != nil {
 		fmt.Fprintf(a.errOut, "clean failed: %v\n", err)
 		return 1
 	}

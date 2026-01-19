@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+const DefaultSpinnerDelay = 500 * time.Millisecond
+
 func RunWithSpinner(out io.Writer, message string, tips []string, threshold time.Duration, fn func() error) error {
 	if threshold <= 0 {
 		return fn()

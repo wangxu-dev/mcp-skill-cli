@@ -4,14 +4,12 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"os"
-	"strings"
-	"time"
-
 	"mcp-skill-manager/internal/cli"
 	"mcp-skill-manager/internal/installer"
 	"mcp-skill-manager/internal/mcp"
 	"mcp-skill-manager/internal/registryindex"
+	"os"
+	"strings"
 )
 
 func (a *App) runInstall(args []string) int {
@@ -152,7 +150,7 @@ func (a *App) runInstall(args []string) int {
 		return 1
 	}
 
-	err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), time.Second, func() error {
+	err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
 		var installErr error
 		records, installErr = mcp.Install(def, normalizedScope, cwd, clients, force)
 		return installErr
@@ -162,7 +160,7 @@ func (a *App) runInstall(args []string) int {
 			fmt.Fprintln(a.out, "canceled")
 			return 0
 		}
-		err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), time.Second, func() error {
+		err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
 			var installErr error
 			records, installErr = mcp.Install(def, normalizedScope, cwd, clients, true)
 			return installErr
