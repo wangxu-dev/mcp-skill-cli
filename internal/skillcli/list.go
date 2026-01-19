@@ -103,7 +103,7 @@ func (a *App) runList(args []string) int {
 			}
 			fmt.Fprintf(a.out, "%s (%s)\n", item.Client, item.Scope)
 			writer = tabwriter.NewWriter(a.out, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(writer, "SKILL\tVERSION\tDESCRIPTION\tPATH")
+			fmt.Fprintln(writer, "SKILL\tVERSION\tDESCRIPTION")
 			printed = true
 			lastTool = item.Client
 			lastScope = item.Scope
@@ -117,7 +117,7 @@ func (a *App) runList(args []string) int {
 		} else {
 			description, _ = readSkillDescription(item.Path)
 		}
-		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", item.Name, version, description, item.Path)
+		fmt.Fprintf(writer, "%s\t%s\t%s\n", item.Name, version, truncateDescription(description, 80))
 	}
 
 	if matched == 0 {

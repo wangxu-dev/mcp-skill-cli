@@ -118,13 +118,13 @@ func (a *App) runList(args []string) int {
 			}
 			fmt.Fprintf(a.out, "%s (%s)\n", item.Client, item.Scope)
 			writer = tabwriter.NewWriter(a.out, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(writer, "NAME\tTRANSPORT\tPATH")
+			fmt.Fprintln(writer, "NAME\tTRANSPORT")
 			printed = true
 			lastClient = item.Client
 			lastScope = item.Scope
 		}
 		matched++
-		fmt.Fprintf(writer, "%s\t%s\t%s\n", item.Name, displayTransport(item.Transport), item.Path)
+		fmt.Fprintf(writer, "%s\t%s\n", item.Name, displayTransport(item.Transport))
 	}
 
 	if matched == 0 {
