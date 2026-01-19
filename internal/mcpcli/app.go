@@ -528,7 +528,7 @@ func (a *App) printHelp() {
 
 Commands:
   install|i <source>   Install MCP servers from registry, local store, or file
-  list                 List installed MCP servers
+  list                 List installed MCP servers (or registry with --available)
   update|upgrade        Update installed MCP servers from registry
   uninstall|remove|rm  Remove installed MCP servers
   clean                Clear local store (~/.mcp-skill/skill and ~/.mcp-skill/mcp)
@@ -541,6 +541,11 @@ func (a *App) printInstallHelp() {
 	fmt.Fprintf(a.out, `Usage: %s install <name|path> [--global|-g] [--local|-l] [--force|-f] [--client|-c <list>] [--all|-a]
        %s install --name <name> --transport <http|stdio> [--url <url> | --command <cmd>] [--args <a,b>] [--client|-c <list>] [--all|-a]
 
+What it does:
+  - Registry name: checks requirements, prompts for inputs, clones/builds if needed, then writes config
+  - File path: loads the MCP definition JSON and writes config
+  - Inline definition: uses flags to build a definition and writes config
+
 Examples:
   %s install github -c claude
   %s install D:\mcp\github.json -c codex
@@ -550,6 +555,10 @@ Examples:
 
 func (a *App) printListHelp() {
 	fmt.Fprintf(a.out, `Usage: %s list [name] [--available|-a] [--global|-g] [--local|-l] [--client|-c <list>]
+
+What it does:
+  - Default: list installed MCP servers
+  - With --available: list registry MCP servers
 
 Examples:
   %s list
@@ -694,6 +703,10 @@ func (a *App) runUpdate(args []string) int {
 func (a *App) printUpdateHelp() {
 	fmt.Fprintf(a.out, `Usage: %s update [name] [--global|-g] [--local|-l] [--client|-c <list>]
 
+What it does:
+  - Checks registry for changes and reinstalls when needed
+  - If name is omitted, updates all installed servers in the selected scope/clients
+
 Examples:
   %s update
   %s update github -g -c claude
@@ -703,15 +716,23 @@ Examples:
 func (a *App) printUninstallHelp() {
 	fmt.Fprintf(a.out, `Usage: %s uninstall [name] [--global|-g] [--local|-l] [--force|-f] [--client|-c <list>] [--all|-a]
 
+What it does:
+  - Removes MCP servers from client config
+  - Use --all to remove every installed server for the selected scope/clients
+
 Examples:
   %s uninstall github -l -c claude
   %s rm github -g -a
   %s rm -g -a
-`, a.binaryName, a.binaryName, a.binaryName)
+`, a.binaryName, a.binaryName, a.binaryName, a.binaryName)
 }
 
 func (a *App) printCleanHelp() {
 	fmt.Fprintf(a.out, `Usage: %s clean
+
+What it does:
+  - Deletes cached registry indexes and local MCP definitions
+  - Does not modify your client config files directly
 
 Clears:
   ~/.mcp-skill/skill
