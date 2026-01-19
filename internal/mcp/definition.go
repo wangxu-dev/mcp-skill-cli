@@ -15,6 +15,7 @@ type Definition struct {
 	Command   string
 	Args      []string
 	Env       map[string]string
+	Headers   map[string]string
 }
 
 type definitionFile struct {
@@ -24,6 +25,7 @@ type definitionFile struct {
 	Command   string            `json:"command"`
 	Args      []string          `json:"args"`
 	Env       map[string]string `json:"env"`
+	Headers   map[string]string `json:"headers"`
 }
 
 func LoadDefinitionFromFile(path string) (Definition, error) {
@@ -45,6 +47,7 @@ func LoadDefinitionFromFile(path string) (Definition, error) {
 		Command:   raw.Command,
 		Args:      raw.Args,
 		Env:       raw.Env,
+		Headers:   raw.Headers,
 	}, raw.Type)
 }
 

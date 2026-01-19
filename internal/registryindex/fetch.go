@@ -55,8 +55,8 @@ func SyncSkill(entry SkillEntry) error {
 }
 
 func SyncMCP(entry MCPEntry) error {
-	if strings.TrimSpace(entry.Name) == "" || strings.TrimSpace(entry.Repo) == "" || strings.TrimSpace(entry.Path) == "" {
-		return fmt.Errorf("invalid mcp entry: missing name/repo/path")
+	if strings.TrimSpace(entry.Name) == "" {
+		return fmt.Errorf("invalid mcp entry: missing name")
 	}
 
 	needs, err := needsUpdate("mcp", entry.Name, entry.Head)
@@ -67,24 +67,46 @@ func SyncMCP(entry MCPEntry) error {
 		return nil
 	}
 
-	tempDir, err := os.MkdirTemp("", "mcp-registry-*")
-	if err != nil {
-		return err
+	entryType := strings.ToLower(strings.TrimSpace(entry.Type))
+	if entryType == "" && strings.TrimSpace(entry.URL) != "" {
+		entryType = "http"
 	}
-	defer os.RemoveAll(tempDir)
-
-	if err := gitClone(entry.Repo, tempDir); err != nil {
-		return err
+	if entryType == "" && strings.TrimSpace(entry.Path) != "" {
+		entryType = "stdio"
 	}
 
-	path := filepath.Join(tempDir, filepath.FromSlash(entry.Path))
-	def, err := mcp.LoadDefinitionFromFile(path)
-	if err != nil {
-		return err
-	}
-	def.Name = entry.Name
-	if _, err := mcp.SaveLocalDefinition(def); err != nil {
-		return err
+	if entryType == "http" {
+		def, err := mcp.DefinitionFromArgs(entry.Name, "http", entry.URL, "", nil)
+		if err != nil {
+			return err
+		}
+		def.Headers = entry.Headers
+		if _, err := mcp.SaveLocalDefinition(def); err != nil {
+			return err
+		}
+	} else {
+		if strings.TrimSpace(entry.Repo) == "" || strings.TrimSpace(entry.Path) == "" {
+			return fmt.Errorf("invalid mcp entry: missing repo/path")
+		}
+		tempDir, err := os.MkdirTemp("", "mcp-registry-*")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tempDir)
+
+		if err := gitClone(entry.Repo, tempDir); err != nil {
+			return err
+		}
+
+		path := filepath.Join(tempDir, filepath.FromSlash(entry.Path))
+		def, err := mcp.LoadDefinitionFromFile(path)
+		if err != nil {
+			return err
+		}
+		def.Name = entry.Name
+		if _, err := mcp.SaveLocalDefinition(def); err != nil {
+			return err
+		}
 	}
 	return SaveLocalRecord("mcp", LocalRecord{
 		Name: entry.Name,

@@ -38,6 +38,7 @@ func SaveLocalDefinition(def Definition) (string, error) {
 		Command:   def.Command,
 		Args:      def.Args,
 		Env:       def.Env,
+		Headers:   def.Headers,
 	}, "", "  ")
 	if err != nil {
 		return "", err

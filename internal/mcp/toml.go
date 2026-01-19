@@ -102,6 +102,13 @@ func formatTomlEntry(def Definition) []string {
 	lines := []string{fmt.Sprintf("[mcp_servers.%s]", def.Name)}
 	if def.Transport == "http" {
 		lines = append(lines, fmt.Sprintf("url = %q", def.URL))
+		if len(def.Headers) > 0 {
+			lines = append(lines, "")
+			lines = append(lines, fmt.Sprintf("[mcp_servers.%s.http_headers]", def.Name))
+			for key, value := range def.Headers {
+				lines = append(lines, fmt.Sprintf("%s = %q", key, value))
+			}
+		}
 		return lines
 	}
 

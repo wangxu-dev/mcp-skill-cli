@@ -87,10 +87,14 @@ func ListClaude(scope, cwd string) ([]Entry, string, error) {
 
 func toClaudeServer(def Definition) map[string]any {
 	if def.Transport == "http" {
-		return map[string]any{
+		server := map[string]any{
 			"type": "http",
 			"url":  def.URL,
 		}
+		if len(def.Headers) > 0 {
+			server["headers"] = def.Headers
+		}
+		return server
 	}
 	server := map[string]any{
 		"type":    "stdio",
