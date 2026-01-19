@@ -84,29 +84,6 @@ func SyncMCP(entry MCPEntry) error {
 		if _, err := mcp.SaveLocalDefinition(def); err != nil {
 			return err
 		}
-	} else {
-		if strings.TrimSpace(entry.Repo) == "" || strings.TrimSpace(entry.Path) == "" {
-			return fmt.Errorf("invalid mcp entry: missing repo/path")
-		}
-		tempDir, err := os.MkdirTemp("", "mcp-registry-*")
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(tempDir)
-
-		if err := gitClone(entry.Repo, tempDir); err != nil {
-			return err
-		}
-
-		path := filepath.Join(tempDir, filepath.FromSlash(entry.Path))
-		def, err := mcp.LoadDefinitionFromFile(path)
-		if err != nil {
-			return err
-		}
-		def.Name = entry.Name
-		if _, err := mcp.SaveLocalDefinition(def); err != nil {
-			return err
-		}
 	}
 	return SaveLocalRecord("mcp", LocalRecord{
 		Name: entry.Name,

@@ -21,9 +21,28 @@ type MCPEntry struct {
 	Repo        string            `json:"repo,omitempty"`
 	URL         string            `json:"url,omitempty"`
 	Headers     map[string]string `json:"headers,omitempty"`
+	Requires    []string          `json:"requires,omitempty"`
+	Install     []string          `json:"install,omitempty"`
+	Run         MCPRun            `json:"run,omitempty"`
+	Inputs      []MCPInput        `json:"inputs,omitempty"`
 	Head        string            `json:"head,omitempty"`
 	UpdatedAt   string            `json:"updatedAt,omitempty"`
 	CheckedAt   string            `json:"checkedAt,omitempty"`
+}
+
+type MCPRun struct {
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+}
+
+type MCPInput struct {
+	Name     string   `json:"name"`
+	Label    string   `json:"label,omitempty"`
+	Type     string   `json:"type,omitempty"`
+	Required bool     `json:"required,omitempty"`
+	Default  string   `json:"default,omitempty"`
+	Options  []string `json:"options,omitempty"`
 }
 
 type MCPIndex struct {

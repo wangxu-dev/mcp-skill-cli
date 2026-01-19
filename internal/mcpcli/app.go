@@ -129,6 +129,10 @@ func (a *App) runInstall(args []string) int {
 	}
 
 	var def mcp.Definition
+	var records []mcp.Installed
+	cwd, _ := os.Getwd()
+	force := *forceShort || *forceLong
+
 	if usesInlineDefinition(*nameFlag, *transportFlag, *urlFlag, *commandFlag, *argsFlag) {
 		args := splitArgsCSV(*argsFlag)
 		def, err = mcp.DefinitionFromArgs(*nameFlag, *transportFlag, *urlFlag, *commandFlag, args)
@@ -142,10 +146,43 @@ func (a *App) runInstall(args []string) int {
 			return 2
 		}
 		source := positionals[0]
-		def, err = resolveDefinition(source)
-		if err != nil {
-			fmt.Fprintf(a.errOut, "install failed: %v\n", err)
-			return 1
+		if fileExists(source) {
+			def, err = mcp.LoadDefinitionFromFile(source)
+			if err != nil {
+				fmt.Fprintf(a.errOut, "install failed: %v\n", err)
+				return 1
+			}
+		} else {
+			if err := registryindex.EnsureIndexes(); err == nil {
+				entry, ok, err := registryindex.FindMCP(source)
+				if err != nil {
+					fmt.Fprintf(a.errOut, "install failed: %v\n", err)
+					return 1
+				}
+				if ok {
+					records, err = installFromRegistryEntry(entry, registryInstallOptions{
+						Scope:   normalizedScope,
+						Cwd:     cwd,
+						Clients: clients,
+						Force:   force,
+						Out:     bufio.NewWriter(a.out),
+						ErrOut:  bufio.NewWriter(a.errOut),
+					})
+					if err != nil {
+						fmt.Fprintf(a.errOut, "install failed: %v\n", err)
+						return 1
+					}
+					for _, record := range records {
+						fmt.Fprintf(a.out, "installed %s -> %s (%s)\n", record.Name, record.Path, record.Client)
+					}
+					return 0
+				}
+			}
+			def, err = mcp.LoadLocalDefinition(source)
+			if err != nil {
+				fmt.Fprintf(a.errOut, "install failed: server not found in registry or local store: %s\n", source)
+				return 1
+			}
 		}
 	}
 
@@ -154,10 +191,8 @@ func (a *App) runInstall(args []string) int {
 		return 1
 	}
 
-	cwd, _ := os.Getwd()
-	force := *forceShort || *forceLong
 	spinner := cli.StartSpinner(a.errOut, "")
-	records, err := mcp.Install(def, normalizedScope, cwd, clients, force)
+	records, err = mcp.Install(def, normalizedScope, cwd, clients, force)
 	spinner.Stop()
 	if err != nil && !force && isAlreadyExistsError(err) {
 		if !confirmPrompt(a.out, "Server already exists. Overwrite? Type 'yes' to continue: ") {
@@ -546,6 +581,7 @@ func (a *App) runUpdate(args []string) int {
 		fmt.Fprintf(a.errOut, "update failed: %v\n", err)
 		return 1
 	}
+	spinner.Stop()
 
 	type result struct {
 		item    mcp.Installed
@@ -569,28 +605,25 @@ func (a *App) runUpdate(args []string) int {
 			results = append(results, result{item: item, err: err})
 			continue
 		}
-		if ok && record.Head == entry.Head {
+		if ok && entry.Head != "" && record.Head == entry.Head {
 			results = append(results, result{item: item, message: "already latest"})
 			continue
 		}
 
-		if err := registryindex.SyncMCP(entry); err != nil {
-			results = append(results, result{item: item, err: err})
-			continue
-		}
-		def, err := mcp.LoadLocalDefinition(entry.Name)
-		if err != nil {
-			results = append(results, result{item: item, err: err})
-			continue
-		}
-		_, err = mcp.Install(def, item.Scope, cwd, []installer.Tool{item.Client}, true)
+		_, err = installFromRegistryEntry(entry, registryInstallOptions{
+			Scope:   item.Scope,
+			Cwd:     cwd,
+			Clients: []installer.Tool{item.Client},
+			Force:   true,
+			Out:     bufio.NewWriter(a.out),
+			ErrOut:  bufio.NewWriter(a.errOut),
+		})
 		if err != nil {
 			results = append(results, result{item: item, err: err})
 			continue
 		}
 		results = append(results, result{item: item, message: "updated"})
 	}
-	spinner.Stop()
 	for _, res := range results {
 		if res.err != nil {
 			fmt.Fprintf(a.errOut, "update failed for %s (%s/%s): %v\n", res.item.Name, res.item.Client, res.item.Scope, res.err)
@@ -902,6 +935,10 @@ func resolveDefinition(source string) (mcp.Definition, error) {
 		return mcp.Definition{}, err
 	}
 	if ok {
+		entryType := normalizeEntryType(entry)
+		if entryType != "http" {
+			return mcp.Definition{}, fmt.Errorf("stdio entries must be installed from the registry")
+		}
 		if err := registryindex.SyncMCP(entry); err != nil {
 			def, localErr := mcp.LoadLocalDefinition(entry.Name)
 			if localErr != nil {
