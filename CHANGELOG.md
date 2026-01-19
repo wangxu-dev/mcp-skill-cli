@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.6 - 2026-01-19
+### Changed
+- CLI architecture refactor: split MCP/skill commands into focused files for easier maintenance.
+- Unified delayed spinner behavior so tips appear only for longer operations.
+- Normalized MCP/skill view output to show core metadata consistently.
+
 ## 0.0.5 - 2026-01-19
 ### Added
 - MCP registry install with interactive prompts, cache reuse, and registry metadata checks.
