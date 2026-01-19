@@ -1,11 +1,13 @@
 package registryindex
 
 type SkillEntry struct {
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	Repo      string `json:"repo"`
-	Head      string `json:"head"`
-	UpdatedAt string `json:"updatedAt"`
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	Repo        string `json:"repo"`
+	Head        string `json:"head"`
+	UpdatedAt   string `json:"updatedAt"`
+	Version     string `json:"version,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 type SkillIndex struct {

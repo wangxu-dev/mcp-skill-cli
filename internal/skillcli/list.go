@@ -157,23 +157,10 @@ func (a *App) runListAvailable(filter string) int {
 			if filter != "" && !matchesSkillFilter(entry.Name, filter) {
 				continue
 			}
-			meta, err := fetchRemoteSkillMeta(entry.Name)
-			if err != nil && !isRemoteNotFound(err) {
-				outputErr = err
-				return err
-			}
-			updatedAt := entry.UpdatedAt
-			description := ""
-			if err == nil {
-				if meta.UpdatedAt != "" {
-					updatedAt = meta.UpdatedAt
-				}
-				description = meta.Description
-			}
 			rows = append(rows, row{
 				name:        entry.Name,
-				updatedAt:   updatedAt,
-				description: truncateDescription(description, 80),
+				updatedAt:   entry.UpdatedAt,
+				description: truncateDescription(entry.Description, 80),
 			})
 		}
 		return nil
