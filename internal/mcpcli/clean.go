@@ -51,7 +51,7 @@ func (a *App) runClean(args []string) int {
 		return 0
 	}
 
-	err := cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
+	err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
 		return installer.CleanLocalStore()
 	})
 	if err != nil {

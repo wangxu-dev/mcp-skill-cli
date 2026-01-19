@@ -69,7 +69,7 @@ func (a *App) runList(args []string) int {
 	}
 	cwd, _ := os.Getwd()
 	var items []mcp.Installed
-	err := cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
+	err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
 		var listErr error
 		items, listErr = mcp.List(scopes, cwd, clients)
 		return listErr
@@ -141,54 +141,66 @@ func (a *App) runList(args []string) int {
 }
 
 func (a *App) runListAvailable(nameFilter string) int {
+	var outputErr error
+	type row struct {
+		name        string
+		typ         string
+		updatedAt   string
+		description string
+	}
+	var rows []row
 	err := cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
-		return registryindex.EnsureIndexes()
+		if err := registryindex.EnsureIndexes(); err != nil {
+			outputErr = err
+			return err
+		}
+		index, err := registryindex.LoadMCPIndex()
+		if err != nil {
+			outputErr = err
+			return err
+		}
+		entries := index.MCP
+		if len(entries) == 0 {
+			entries = index.Servers
+		}
+		if len(entries) == 0 {
+			return nil
+		}
+
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].Name < entries[j].Name
+		})
+
+		for _, entry := range entries {
+			if !matchesFilter(entry.Name, nameFilter) {
+				continue
+			}
+			rows = append(rows, row{
+				name:        entry.Name,
+				typ:         displayTransport(entry.Type),
+				updatedAt:   entry.UpdatedAt,
+				description: truncateDescription(entry.Description, 80),
+			})
+		}
+		return nil
 	})
 	if err != nil {
-		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
+		fmt.Fprintf(a.errOut, "list failed: %v\n", outputErr)
 		return 1
 	}
-	index, err := registryindex.LoadMCPIndex()
-	if err != nil {
-		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
-		return 1
-	}
-	entries := index.MCP
-	if len(entries) == 0 {
-		entries = index.Servers
-	}
-	if len(entries) == 0 {
-		fmt.Fprintln(a.out, "no servers available")
+
+	if len(rows) == 0 {
+		fmt.Fprintln(a.out, "no matching servers found")
 		return 0
 	}
-
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name < entries[j].Name
-	})
-
 	writer := tabwriter.NewWriter(a.out, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(writer, "NAME\tTYPE\tUPDATED\tDESCRIPTION")
-	matched := 0
-	for _, entry := range entries {
-		if !matchesFilter(entry.Name, nameFilter) {
-			continue
-		}
-		matched++
-		fmt.Fprintf(
-			writer,
-			"%s\t%s\t%s\t%s\n",
-			entry.Name,
-			displayTransport(entry.Type),
-			entry.UpdatedAt,
-			truncateDescription(entry.Description, 80),
-		)
+	for _, item := range rows {
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", item.name, item.typ, item.updatedAt, item.description)
 	}
 	if err := writer.Flush(); err != nil {
 		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
 		return 1
-	}
-	if matched == 0 {
-		fmt.Fprintln(a.out, "no matching servers found")
 	}
 	return 0
 }

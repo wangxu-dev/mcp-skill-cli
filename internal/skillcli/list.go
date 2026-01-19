@@ -64,7 +64,7 @@ func (a *App) runList(args []string) int {
 	scopes := resolveListScopes(*globalShort || *globalLong, *localShort || *localLong || *projectLong)
 	cwd, _ := os.Getwd()
 	var items []skill.Installed
-	err := cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
+	err = cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
 		var listErr error
 		items, listErr = skill.List(scopes, cwd, tools)
 		return listErr
@@ -135,49 +135,66 @@ func (a *App) runList(args []string) int {
 }
 
 func (a *App) runListAvailable(filter string) int {
+	var outputErr error
+	type row struct {
+		name        string
+		updatedAt   string
+		description string
+	}
+	var rows []row
 	err := cli.RunWithSpinner(a.errOut, "", cli.DefaultTips(), cli.DefaultSpinnerDelay, func() error {
-		return registryindex.EnsureIndexes()
+		if err := registryindex.EnsureIndexes(); err != nil {
+			outputErr = err
+			return err
+		}
+		index, err := registryindex.LoadSkillIndex()
+		if err != nil {
+			outputErr = err
+			return err
+		}
+
+		for _, entry := range index.Skills {
+			if filter != "" && !matchesSkillFilter(entry.Name, filter) {
+				continue
+			}
+			meta, err := fetchRemoteSkillMeta(entry.Name)
+			if err != nil && !isRemoteNotFound(err) {
+				outputErr = err
+				return err
+			}
+			updatedAt := entry.UpdatedAt
+			description := ""
+			if err == nil {
+				if meta.UpdatedAt != "" {
+					updatedAt = meta.UpdatedAt
+				}
+				description = meta.Description
+			}
+			rows = append(rows, row{
+				name:        entry.Name,
+				updatedAt:   updatedAt,
+				description: truncateDescription(description, 80),
+			})
+		}
+		return nil
 	})
 	if err != nil {
-		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
-		return 1
-	}
-	index, err := registryindex.LoadSkillIndex()
-	if err != nil {
-		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
+		fmt.Fprintf(a.errOut, "list failed: %v\n", outputErr)
 		return 1
 	}
 
+	if len(rows) == 0 {
+		fmt.Fprintln(a.out, "no matching skills found")
+		return 0
+	}
 	writer := tabwriter.NewWriter(a.out, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(writer, "SKILL\tUPDATED\tDESCRIPTION")
-	matched := 0
-	for _, entry := range index.Skills {
-		if filter != "" && !matchesSkillFilter(entry.Name, filter) {
-			continue
-		}
-		meta, err := fetchRemoteSkillMeta(entry.Name)
-		if err != nil && !isRemoteNotFound(err) {
-			fmt.Fprintf(a.errOut, "list failed: %v\n", err)
-			return 1
-		}
-		updatedAt := entry.UpdatedAt
-		description := ""
-		if err == nil {
-			if meta.UpdatedAt != "" {
-				updatedAt = meta.UpdatedAt
-			}
-			description = meta.Description
-		}
-		description = truncateDescription(description, 80)
-		fmt.Fprintf(writer, "%s\t%s\t%s\n", entry.Name, updatedAt, description)
-		matched++
+	for _, item := range rows {
+		fmt.Fprintf(writer, "%s\t%s\t%s\n", item.name, item.updatedAt, item.description)
 	}
 	if err := writer.Flush(); err != nil {
 		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
 		return 1
-	}
-	if matched == 0 {
-		fmt.Fprintln(a.out, "no matching skills found")
 	}
 	return 0
 }
