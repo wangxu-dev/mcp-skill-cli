@@ -1,6 +1,6 @@
 {
   "name": "mcp-skill-cli",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "MCP and skill CLI installers",
   "author": "wangxu <wx@aurise.dev>",
   "license": "Apache-2.0",

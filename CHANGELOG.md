@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.7 - 2026-01-19
+### Changed
+- Standardized list output (removed PATH column; consistent truncation).
+- Unified spinner delay (300ms) for all commands, including list/uninstall/clean.
+- `skill list --available` now uses index metadata only (no per-skill meta fetches).
+- `mcp list --available` waits for full data fetch before printing.
+
 ## 0.0.6 - 2026-01-19
 ### Changed
 - CLI architecture refactor: split MCP/skill commands into focused files for easier maintenance.
