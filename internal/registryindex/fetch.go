@@ -47,10 +47,11 @@ func SyncSkill(entry SkillEntry) error {
 		return err
 	}
 	return SaveLocalRecord("skill", LocalRecord{
-		Name: entry.Name,
-		Repo: entry.Repo,
-		Path: entry.Path,
-		Head: entry.Head,
+		Name:      entry.Name,
+		Repo:      entry.Repo,
+		Path:      entry.Path,
+		Head:      entry.Head,
+		UpdatedAt: entry.UpdatedAt,
 	})
 }
 
@@ -86,10 +87,11 @@ func SyncMCP(entry MCPEntry) error {
 		}
 	}
 	return SaveLocalRecord("mcp", LocalRecord{
-		Name: entry.Name,
-		Repo: entry.Repo,
-		Path: entry.Path,
-		Head: entry.Head,
+		Name:      entry.Name,
+		Repo:      entry.Repo,
+		Path:      entry.Path,
+		Head:      entry.Head,
+		UpdatedAt: entry.UpdatedAt,
 	})
 }
 

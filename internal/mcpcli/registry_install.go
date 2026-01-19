@@ -4,12 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"mcp-skill-manager/internal/installer"
 	"mcp-skill-manager/internal/mcp"
@@ -46,12 +48,14 @@ func installFromRegistryEntry(entry registryindex.MCPEntry, opts registryInstall
 		if strings.TrimSpace(entry.Repo) == "" {
 			return nil, fmt.Errorf("invalid mcp entry: missing repo")
 		}
-		repoPath, err = prepareRepo(entry, opts.Force)
+		repoPath, repoUpdated, err := prepareRepo(entry, opts.Force, opts.Out)
 		if err != nil {
 			return nil, err
 		}
-		if err := runInstallSteps(entry.Install, repoPath); err != nil {
-			return nil, err
+		if repoUpdated || opts.Force {
+			if err := runInstallSteps(entry.Install, repoPath); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -60,7 +64,11 @@ func installFromRegistryEntry(entry registryindex.MCPEntry, opts registryInstall
 		return nil, err
 	}
 
-	if _, err := mcp.SaveLocalDefinition(def); err != nil {
+	templateDef, err := buildTemplateDefinition(entry, repoPath)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := mcp.SaveLocalDefinition(templateDef); err != nil {
 		return nil, err
 	}
 
@@ -70,10 +78,11 @@ func installFromRegistryEntry(entry registryindex.MCPEntry, opts registryInstall
 	}
 
 	if err := registryindex.SaveLocalRecord("mcp", registryindex.LocalRecord{
-		Name: entry.Name,
-		Repo: entry.Repo,
-		Path: entry.Path,
-		Head: entry.Head,
+		Name:      entry.Name,
+		Repo:      entry.Repo,
+		Path:      entry.Path,
+		Head:      entry.Head,
+		UpdatedAt: entry.UpdatedAt,
 	}); err != nil {
 		return nil, err
 	}
@@ -216,37 +225,46 @@ func isOptionMatch(options []string, value string) bool {
 	return false
 }
 
-func prepareRepo(entry registryindex.MCPEntry, force bool) (string, error) {
+func prepareRepo(entry registryindex.MCPEntry, force bool, out *bufio.Writer) (string, bool, error) {
 	root, err := installer.LocalMcpStore()
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if err := os.MkdirAll(root, 0o755); err != nil {
-		return "", err
+		return "", false, err
 	}
 	dest := filepath.Join(root, entry.Name)
 	if _, err := os.Stat(dest); err == nil {
+		needs, err := needsMcpUpdate(entry)
+		if err != nil {
+			return "", false, err
+		}
+		if !needs && !force {
+			return dest, false, nil
+		}
 		if !force {
-			return "", fmt.Errorf("local mcp cache already exists: %s", dest)
+			if !confirmUpdate(out, entry.Name) {
+				return dest, false, nil
+			}
 		}
 		if err := os.RemoveAll(dest); err != nil {
-			return "", err
+			return "", false, err
 		}
 	}
 
 	repo, err := normalizeRepoURL(entry.Repo)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if err := gitClone(repo, dest); err != nil {
-		return "", err
+		return "", false, err
 	}
 	if strings.TrimSpace(entry.Head) != "" {
 		if err := gitCheckout(dest, entry.Head); err != nil {
-			return "", err
+			return "", false, err
 		}
 	}
-	return dest, nil
+	return dest, true, nil
 }
 
 func normalizeRepoURL(repo string) (string, error) {
@@ -290,6 +308,51 @@ func gitCheckout(repoPath, head string) error {
 		return fmt.Errorf("git checkout failed: %v", err)
 	}
 	return nil
+}
+
+func needsMcpUpdate(entry registryindex.MCPEntry) (bool, error) {
+	record, ok, err := registryindex.LocalRecordFor("mcp", entry.Name)
+	if err != nil {
+		return true, err
+	}
+	if !ok {
+		return true, nil
+	}
+	if entry.Head != "" && record.Head != "" && entry.Head == record.Head {
+		return false, nil
+	}
+	if entry.UpdatedAt != "" && record.UpdatedAt != "" {
+		entryTime, err := time.Parse(time.RFC3339, entry.UpdatedAt)
+		if err != nil {
+			return true, nil
+		}
+		recordTime, err := time.Parse(time.RFC3339, record.UpdatedAt)
+		if err != nil {
+			return true, nil
+		}
+		if !entryTime.After(recordTime) {
+			return false, nil
+		}
+	}
+	if entry.Head != "" && record.Head == entry.Head {
+		return false, nil
+	}
+	return true, nil
+}
+
+func confirmUpdate(out *bufio.Writer, name string) bool {
+	if out == nil {
+		return true
+	}
+	fmt.Fprintf(out, "Cached MCP '%s' exists. Update cache? Type 'yes' to continue: ", name)
+	_ = out.Flush()
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		return false
+	}
+	line = strings.TrimSpace(strings.ToLower(line))
+	return line == "yes"
 }
 
 func runInstallSteps(steps []string, repoPath string) error {
@@ -337,6 +400,35 @@ func buildDefinitionFromEntry(entry registryindex.MCPEntry, inputs map[string]st
 	case "http":
 		url := expandPlaceholders(entry.URL, inputs)
 		def, err := mcp.DefinitionFromArgs(entry.Name, "http", url, "", nil)
+		if err != nil {
+			return mcp.Definition{}, err
+		}
+		def.Headers = expandMap(entry.Headers, inputs)
+		return def, nil
+	case "stdio":
+		command := expandPlaceholders(entry.Run.Command, inputs)
+		args := expandSlice(entry.Run.Args, inputs)
+		env := expandMap(entry.Run.Env, inputs)
+		def, err := mcp.DefinitionFromArgs(entry.Name, "stdio", "", command, args)
+		if err != nil {
+			return mcp.Definition{}, err
+		}
+		def.Env = env
+		return def, nil
+	default:
+		return mcp.Definition{}, fmt.Errorf("unsupported transport: %s", entryType)
+	}
+}
+
+func buildTemplateDefinition(entry registryindex.MCPEntry, repoPath string) (mcp.Definition, error) {
+	inputs := map[string]string{}
+	if repoPath != "" {
+		inputs["ROOT"] = repoPath
+	}
+	entryType := normalizeEntryType(entry)
+	switch entryType {
+	case "http":
+		def, err := mcp.DefinitionFromArgs(entry.Name, "http", expandPlaceholders(entry.URL, inputs), "", nil)
 		if err != nil {
 			return mcp.Definition{}, err
 		}

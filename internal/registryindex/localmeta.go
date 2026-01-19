@@ -9,10 +9,11 @@ import (
 )
 
 type LocalRecord struct {
-	Name string `json:"name"`
-	Repo string `json:"repo"`
-	Path string `json:"path"`
-	Head string `json:"head"`
+	Name      string `json:"name"`
+	Repo      string `json:"repo"`
+	Path      string `json:"path"`
+	Head      string `json:"head"`
+	UpdatedAt string `json:"updatedAt,omitempty"`
 }
 
 func LoadLocalRecord(kind, name string) (LocalRecord, bool, error) {

@@ -785,12 +785,12 @@ func (a *App) runUpdate(args []string) int {
 			continue
 		}
 
-		record, ok, err := registryindex.LocalRecordFor("mcp", item.Name)
+		needsUpdate, err := needsMcpUpdate(entry)
 		if err != nil {
 			results = append(results, result{item: item, err: err})
 			continue
 		}
-		if ok && entry.Head != "" && record.Head == entry.Head {
+		if !needsUpdate {
 			results = append(results, result{item: item, message: "already latest"})
 			continue
 		}
