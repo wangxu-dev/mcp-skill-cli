@@ -222,6 +222,8 @@ func (a *App) runList(args []string) int {
 	localShort := fs.Bool("l", false, "show local/project scope")
 	localLong := fs.Bool("local", false, "show local/project scope")
 	projectLong := fs.Bool("project", false, "show local/project scope")
+	availableShort := fs.Bool("a", false, "show available servers in registry")
+	availableLong := fs.Bool("available", false, "show available servers in registry")
 	clientFlag := fs.String("client", "", "comma-separated clients: claude,codex,gemini,opencode")
 	clientShort := fs.String("c", "", "alias for --client")
 	toolFlag := fs.String("tool", "", "deprecated: use --client")
@@ -244,6 +246,10 @@ func (a *App) runList(args []string) int {
 	nameFilter := ""
 	if len(positionals) == 1 {
 		nameFilter = positionals[0]
+	}
+
+	if *availableShort || *availableLong {
+		return a.runListAvailable(nameFilter)
 	}
 
 	clientValue, err := resolveListClientValue(*clientFlag, *clientShort, *toolFlag)
@@ -326,6 +332,56 @@ func (a *App) runList(args []string) int {
 			fmt.Fprintf(a.errOut, "list failed: %v\n", err)
 			return 1
 		}
+	}
+	return 0
+}
+
+func (a *App) runListAvailable(nameFilter string) int {
+	if err := registryindex.EnsureIndexes(); err != nil {
+		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
+		return 1
+	}
+	index, err := registryindex.LoadMCPIndex()
+	if err != nil {
+		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
+		return 1
+	}
+	entries := index.MCP
+	if len(entries) == 0 {
+		entries = index.Servers
+	}
+	if len(entries) == 0 {
+		fmt.Fprintln(a.out, "no servers available")
+		return 0
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name < entries[j].Name
+	})
+
+	writer := tabwriter.NewWriter(a.out, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(writer, "NAME\tTYPE\tUPDATED\tDESCRIPTION")
+	matched := 0
+	for _, entry := range entries {
+		if !matchesFilter(entry.Name, nameFilter) {
+			continue
+		}
+		matched++
+		fmt.Fprintf(
+			writer,
+			"%s\t%s\t%s\t%s\n",
+			entry.Name,
+			displayTransport(entry.Type),
+			entry.UpdatedAt,
+			truncateDescription(entry.Description, 80),
+		)
+	}
+	if err := writer.Flush(); err != nil {
+		fmt.Fprintf(a.errOut, "list failed: %v\n", err)
+		return 1
+	}
+	if matched == 0 {
+		fmt.Fprintln(a.out, "no matching servers found")
 	}
 	return 0
 }
@@ -493,11 +549,12 @@ Examples:
 }
 
 func (a *App) printListHelp() {
-	fmt.Fprintf(a.out, `Usage: %s list [name] [--global|-g] [--local|-l] [--client|-c <list>]
+	fmt.Fprintf(a.out, `Usage: %s list [name] [--available|-a] [--global|-g] [--local|-l] [--client|-c <list>]
 
 Examples:
   %s list
   %s list github -g -c claude
+  %s list --available
 `, a.binaryName, a.binaryName, a.binaryName, a.binaryName)
 }
 
@@ -808,6 +865,20 @@ func displayTransport(value string) string {
 		return "-"
 	}
 	return value
+}
+
+func truncateDescription(value string, maxLen int) string {
+	value = strings.TrimSpace(value)
+	if value == "" || maxLen <= 0 {
+		return ""
+	}
+	if len(value) <= maxLen {
+		return value
+	}
+	if maxLen <= 3 {
+		return value[:maxLen]
+	}
+	return value[:maxLen-3] + "..."
 }
 
 func isAlreadyExistsError(err error) bool {
