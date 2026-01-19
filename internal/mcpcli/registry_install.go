@@ -13,18 +13,20 @@ import (
 	"strings"
 	"time"
 
+	"mcp-skill-manager/internal/cli"
 	"mcp-skill-manager/internal/installer"
 	"mcp-skill-manager/internal/mcp"
 	"mcp-skill-manager/internal/registryindex"
 )
 
 type registryInstallOptions struct {
-	Scope   string
-	Cwd     string
-	Clients []installer.Tool
-	Force   bool
-	Out     *bufio.Writer
-	ErrOut  *bufio.Writer
+	Scope      string
+	Cwd        string
+	Clients    []installer.Tool
+	Force      bool
+	Out        *bufio.Writer
+	ErrOut     *bufio.Writer
+	SpinnerOut io.Writer
 }
 
 func installFromRegistryEntry(entry registryindex.MCPEntry, opts registryInstallOptions) ([]mcp.Installed, error) {
@@ -48,12 +50,15 @@ func installFromRegistryEntry(entry registryindex.MCPEntry, opts registryInstall
 		if strings.TrimSpace(entry.Repo) == "" {
 			return nil, fmt.Errorf("invalid mcp entry: missing repo")
 		}
-		repoPath, repoUpdated, err := prepareRepo(entry, opts.Force, opts.Out)
+		repoPath, repoUpdated, err := ensureRepo(entry, opts)
 		if err != nil {
 			return nil, err
 		}
 		if repoUpdated || opts.Force {
-			if err := runInstallSteps(entry.Install, repoPath); err != nil {
+			err = cli.RunWithSpinner(opts.SpinnerOut, "", cli.DefaultTips(), time.Second, func() error {
+				return runInstallSteps(entry.Install, repoPath)
+			})
+			if err != nil {
 				return nil, err
 			}
 		}
@@ -225,7 +230,7 @@ func isOptionMatch(options []string, value string) bool {
 	return false
 }
 
-func prepareRepo(entry registryindex.MCPEntry, force bool, out *bufio.Writer) (string, bool, error) {
+func ensureRepo(entry registryindex.MCPEntry, opts registryInstallOptions) (string, bool, error) {
 	root, err := installer.LocalMcpStore()
 	if err != nil {
 		return "", false, err
@@ -234,35 +239,47 @@ func prepareRepo(entry registryindex.MCPEntry, force bool, out *bufio.Writer) (s
 		return "", false, err
 	}
 	dest := filepath.Join(root, entry.Name)
-	if _, err := os.Stat(dest); err == nil {
+	_, statErr := os.Stat(dest)
+	exists := statErr == nil
+	needsUpdate := true
+	if exists {
 		needs, err := needsMcpUpdate(entry)
 		if err != nil {
 			return "", false, err
 		}
-		if !needs && !force {
+		needsUpdate = needs
+		if !needsUpdate && !opts.Force {
 			return dest, false, nil
 		}
-		if !force {
-			if !confirmUpdate(out, entry.Name) {
+		if !opts.Force {
+			if !confirmUpdate(opts.Out, entry.Name) {
 				return dest, false, nil
 			}
 		}
-		if err := os.RemoveAll(dest); err != nil {
-			return "", false, err
-		}
 	}
 
-	repo, err := normalizeRepoURL(entry.Repo)
+	err = cli.RunWithSpinner(opts.SpinnerOut, "", cli.DefaultTips(), time.Second, func() error {
+		if exists {
+			if err := os.RemoveAll(dest); err != nil {
+				return err
+			}
+		}
+		repo, err := normalizeRepoURL(entry.Repo)
+		if err != nil {
+			return err
+		}
+		if err := gitClone(repo, dest); err != nil {
+			return err
+		}
+		if strings.TrimSpace(entry.Head) != "" {
+			if err := gitCheckout(dest, entry.Head); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return "", false, err
-	}
-	if err := gitClone(repo, dest); err != nil {
-		return "", false, err
-	}
-	if strings.TrimSpace(entry.Head) != "" {
-		if err := gitCheckout(dest, entry.Head); err != nil {
-			return "", false, err
-		}
 	}
 	return dest, true, nil
 }
