@@ -32,6 +32,16 @@ mcp install context7 -g -c codex
 - `codex`
 - `gemini`
 - `opencode`
+- `cursor`
+- `amp`
+- `kilocode`
+- `roo`
+- `goose`
+- `antigravity`
+- `copilot`
+- `clawdbot`
+- `droid`
+- `windsurf`
 
 ## Local Cache
 

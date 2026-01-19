@@ -10,13 +10,38 @@ import (
 type Tool string
 
 const (
-	ToolClaude   Tool = "claude"
-	ToolCodex    Tool = "codex"
-	ToolGemini   Tool = "gemini"
-	ToolOpenCode Tool = "opencode"
+	ToolClaude      Tool = "claude"
+	ToolCodex       Tool = "codex"
+	ToolGemini      Tool = "gemini"
+	ToolOpenCode    Tool = "opencode"
+	ToolCursor      Tool = "cursor"
+	ToolAmp         Tool = "amp"
+	ToolKiloCode    Tool = "kilocode"
+	ToolRooCode     Tool = "roo"
+	ToolGoose       Tool = "goose"
+	ToolAntigravity Tool = "antigravity"
+	ToolCopilot     Tool = "copilot"
+	ToolClawdbot    Tool = "clawdbot"
+	ToolDroid       Tool = "droid"
+	ToolWindsurf    Tool = "windsurf"
 )
 
-var allTools = []Tool{ToolClaude, ToolCodex, ToolGemini, ToolOpenCode}
+var allTools = []Tool{
+	ToolClaude,
+	ToolCodex,
+	ToolGemini,
+	ToolOpenCode,
+	ToolCursor,
+	ToolAmp,
+	ToolKiloCode,
+	ToolRooCode,
+	ToolGoose,
+	ToolAntigravity,
+	ToolCopilot,
+	ToolClawdbot,
+	ToolDroid,
+	ToolWindsurf,
+}
 
 func ParseTools(value string) ([]Tool, error) {
 	if strings.TrimSpace(value) == "" {
@@ -86,6 +111,26 @@ func userRoot(tool Tool, home string) (string, error) {
 		return filepath.Join(home, ".gemini", "skills"), nil
 	case ToolOpenCode:
 		return filepath.Join(home, ".config", "opencode", "skill"), nil
+	case ToolCursor:
+		return filepath.Join(home, ".cursor", "skills"), nil
+	case ToolAmp:
+		return filepath.Join(home, ".config", "agents", "skills"), nil
+	case ToolKiloCode:
+		return filepath.Join(home, ".kilocode", "skills"), nil
+	case ToolRooCode:
+		return filepath.Join(home, ".roo", "skills"), nil
+	case ToolGoose:
+		return filepath.Join(home, ".config", "goose", "skills"), nil
+	case ToolAntigravity:
+		return filepath.Join(home, ".gemini", "antigravity", "skills"), nil
+	case ToolCopilot:
+		return filepath.Join(home, ".copilot", "skills"), nil
+	case ToolClawdbot:
+		return filepath.Join(home, ".clawdbot", "skills"), nil
+	case ToolDroid:
+		return filepath.Join(home, ".factory", "skills"), nil
+	case ToolWindsurf:
+		return filepath.Join(home, ".codeium", "windsurf", "skills"), nil
 	default:
 		return "", fmt.Errorf("unsupported tool: %s", tool)
 	}
@@ -101,6 +146,26 @@ func projectRoot(tool Tool, cwd string) (string, error) {
 		return filepath.Join(cwd, ".gemini", "skills"), nil
 	case ToolOpenCode:
 		return filepath.Join(cwd, ".opencode", "skill"), nil
+	case ToolCursor:
+		return filepath.Join(cwd, ".cursor", "skills"), nil
+	case ToolAmp:
+		return filepath.Join(cwd, ".agents", "skills"), nil
+	case ToolKiloCode:
+		return filepath.Join(cwd, ".kilocode", "skills"), nil
+	case ToolRooCode:
+		return filepath.Join(cwd, ".roo", "skills"), nil
+	case ToolGoose:
+		return filepath.Join(cwd, ".goose", "skills"), nil
+	case ToolAntigravity:
+		return filepath.Join(cwd, ".agent", "skills"), nil
+	case ToolCopilot:
+		return filepath.Join(cwd, ".github", "skills"), nil
+	case ToolClawdbot:
+		return filepath.Join(cwd, "skills"), nil
+	case ToolDroid:
+		return filepath.Join(cwd, ".factory", "skills"), nil
+	case ToolWindsurf:
+		return filepath.Join(cwd, ".windsurf", "skills"), nil
 	default:
 		return "", fmt.Errorf("unsupported tool: %s", tool)
 	}
