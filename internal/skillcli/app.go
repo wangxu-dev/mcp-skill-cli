@@ -109,7 +109,7 @@ func (a *App) runInstall(args []string) int {
 	source := positionals[0]
 	cwd, _ := os.Getwd()
 	force := *forceShort || *forceLong
-	spinner := cli.StartSpinner(a.errOut, "")
+	spinner := cli.StartSpinnerWithTips(a.errOut, "", cli.DefaultTips())
 	records, err := skill.Install(source, normalizedScope, cwd, tools, force)
 	spinner.Stop()
 	if err != nil && !force && isAlreadyExistsError(err) {
@@ -117,7 +117,7 @@ func (a *App) runInstall(args []string) int {
 			fmt.Fprintln(a.out, "canceled")
 			return 0
 		}
-		spinner = cli.StartSpinner(a.errOut, "")
+		spinner = cli.StartSpinnerWithTips(a.errOut, "", cli.DefaultTips())
 		records, err = skill.Install(source, normalizedScope, cwd, tools, true)
 		spinner.Stop()
 	}
@@ -367,7 +367,7 @@ func (a *App) runView(args []string) int {
 		return 0
 	}
 
-	spinner := cli.StartSpinner(a.errOut, "")
+	spinner := cli.StartSpinnerWithTips(a.errOut, "", cli.DefaultTips())
 	if err := registryindex.EnsureIndexes(); err != nil {
 		spinner.Stop()
 		fmt.Fprintf(a.errOut, "view failed: %v\n", err)
@@ -472,7 +472,7 @@ func (a *App) runUpdate(args []string) int {
 		return 0
 	}
 
-	spinner := cli.StartSpinner(a.errOut, "")
+	spinner := cli.StartSpinnerWithTips(a.errOut, "", cli.DefaultTips())
 	if err := registryindex.EnsureIndexes(); err != nil {
 		spinner.Stop()
 		fmt.Fprintf(a.errOut, "update failed: %v\n", err)
@@ -581,7 +581,7 @@ func (a *App) runUpdate(args []string) int {
 }
 
 func (a *App) runListAvailable(filter string) int {
-	spinner := cli.StartSpinner(a.errOut, "")
+	spinner := cli.StartSpinnerWithTips(a.errOut, "", cli.DefaultTips())
 	if err := registryindex.EnsureIndexes(); err != nil {
 		spinner.Stop()
 		fmt.Fprintf(a.errOut, "list failed: %v\n", err)

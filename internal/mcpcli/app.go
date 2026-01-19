@@ -193,7 +193,7 @@ func (a *App) runInstall(args []string) int {
 		return 1
 	}
 
-	spinner := cli.StartSpinner(a.errOut, "")
+	spinner := cli.StartSpinnerWithTips(a.errOut, "", cli.DefaultTips())
 	records, err = mcp.Install(def, normalizedScope, cwd, clients, force)
 	spinner.Stop()
 	if err != nil && !force && isAlreadyExistsError(err) {
@@ -201,7 +201,7 @@ func (a *App) runInstall(args []string) int {
 			fmt.Fprintln(a.out, "canceled")
 			return 0
 		}
-		spinner = cli.StartSpinner(a.errOut, "")
+		spinner = cli.StartSpinnerWithTips(a.errOut, "", cli.DefaultTips())
 		records, err = mcp.Install(def, normalizedScope, cwd, clients, true)
 		spinner.Stop()
 	}
@@ -760,7 +760,7 @@ func (a *App) runUpdate(args []string) int {
 		return 0
 	}
 
-	spinner := cli.StartSpinner(a.errOut, "")
+	spinner := cli.StartSpinnerWithTips(a.errOut, "", cli.DefaultTips())
 	if err := registryindex.EnsureIndexes(); err != nil {
 		spinner.Stop()
 		fmt.Fprintf(a.errOut, "update failed: %v\n", err)
